@@ -19,6 +19,9 @@ public sealed class AppSettings
     /// <summary>Open the Yeti in exclusive mode (3 ms packets). Other apps then need the virtual mic.</summary>
     public bool UltraLowLatency { get; set; }
 
+    /// <summary>Draw the UI with the CPU (fixes blank/white windows on broken GPU drivers or remote desktop).</summary>
+    public bool SoftwareRendering { get; set; }
+
     /// <summary>Mod processor on/off by name; mods not listed keep their own default.</summary>
     public Dictionary<string, bool> ProcessorStates { get; set; } = [];
 

@@ -6,7 +6,12 @@
     <RootNamespace>YetiHub.App</RootNamespace>
     <!-- Program.Main runs Velopack's install/update hooks before WPF starts. -->
     <StartupObject>YetiHub.App.Program</StartupObject>
+    <ApplicationIcon>Assets\yetihub.ico</ApplicationIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="Assets\logo-256.png" />
+    <Resource Include="Assets\yetihub.ico" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Velopack" />
   </ItemGroup>

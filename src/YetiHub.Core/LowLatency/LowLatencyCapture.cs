@@ -37,6 +37,12 @@ public sealed class LowLatencyCapture : IDisposable
     public double PeriodMs { get; }
     public bool IsExclusive { get; }
 
+    /// <summary>Packets Windows flagged as discontinuous (mic data lost because we were too slow). Should stay 0.</summary>
+    public int Glitches { get; private set; }
+
+    private const uint BufferFlagsDiscontinuity = 0x1;
+    private long _packets;
+
     private static (IAudioClient3, StreamFormat, double, bool) OpenShared(string deviceId)
     {
         foreach (var raw in new[] { true, false })
@@ -135,6 +141,9 @@ public sealed class LowLatencyCapture : IDisposable
                     var count = (int)frames * Format.Channels;
                     if (_buffer.Length < count) _buffer = new float[count * 2];
                     var span = _buffer.AsSpan(0, count);
+                    // Windows always flags the first packet of a new stream; only later ones are real glitches.
+                    if ((flags & BufferFlagsDiscontinuity) != 0 && _packets > 0) Glitches++;
+                    _packets++;
                     if ((flags & CoreAudio.BufferFlagsSilent) != 0) span.Clear();
                     else Format.ToFloat(data, span);
                     _captureClient.ReleaseBuffer(frames);

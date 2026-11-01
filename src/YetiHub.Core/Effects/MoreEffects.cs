@@ -45,11 +45,15 @@ public sealed class NoiseReductionEffect : Effect
     private int _frames;
     private float _floor, _oversub;
 
-    public NoiseReductionEffect() : base("denoise", "Noise Reduction", "Learns your room's background noise (fan, hum, hiss) and removes it.")
+    public NoiseReductionEffect() : base("denoise", "Noise Cancelling", "Learns your room's noise (fan, hiss, keyboard) and removes it while you talk.")
     {
         _amount = Param("amount", "Max reduction", 0, 40, 18, "-dB");
         _strength = Param("strength", "Strength", 0, 100, 50, "%");
+        _keysParam = Param("keys", "Keyboard clicks", 0, 100, 50, "%");
     }
+
+    private readonly EffectParameter _keysParam;
+    private float _keys;
 
     public override string Category => "clean";
     public override double LatencyMs => N * 1000.0 / (SampleRate > 0 ? SampleRate : 48000);
@@ -70,6 +74,8 @@ public sealed class NoiseReductionEffect : Effect
     {
         _floor = DbToGain(-_amount.Value);
         _oversub = 1f + _strength.Value / 100f * 2f;
+        _keys = _keysParam.Value / 100f;
+        _clickGain = DbToGain(-30 * _keys);
     }
 
     protected override void ProcessCore(Span<float> samples)
@@ -115,7 +121,7 @@ public sealed class NoiseReductionEffect : Effect
             var p = _power[k] + 1e-12f;
             _psd[k] = _frames == 1 ? p : _psd[k] + (p - _psd[k]) * 0.3f;
             if (_frames == 1 || _psd[k] < _noise[k]) _noise[k] = _psd[k];
-            else _noise[k] *= 1.0025f;
+            else if (!VoiceActive) _noise[k] *= 1.0025f; // don't learn the voice itself as "noise"
 
             var g = 1f - _oversub * bias * _noise[k] / _psd[k];
             _gain[k] = MathF.Max(_floor, MathF.Min(1f, g));
@@ -126,6 +132,15 @@ public sealed class NoiseReductionEffect : Effect
         {
             var g = (_gain[Math.Max(k - 1, 0)] + 2 * _gain[k] + _gain[Math.Min(k + 1, Bins - 1)]) * 0.25f;
             _smoothed[k] += (g - _smoothed[k]) * (g > _smoothed[k] ? 0.7f : 0.3f);
+        }
+
+        Classify();
+
+        // Keyboard / mouse click suppression: a sudden broadband, treble-heavy burst while you aren't talking.
+        if (_clickHold > 0)
+        {
+            _clickHold--;
+            for (var k = 0; k < Bins; k++) _smoothed[k] *= _clickGain;
         }
 
         for (var c = 0; c < Channels; c++)
@@ -147,33 +162,101 @@ public sealed class NoiseReductionEffect : Effect
         }
     }
 
+    // Bands at 48 kHz / 256-point FFT (187.5 Hz per bin).
+    private const int VoiceLo = 1, VoiceHi = 18;   // ~190 Hz .. 3.4 kHz
+    private const int HissLo = 22;                 // > 4 kHz
+
+    private float _prevTotal;
+    private int _clickHold;
+    private float _clickGain = 1;
+    private int _clicksInWindow, _classifyFrames;
+
+    /// <summary>Steady background noise level, dBFS (from the learned noise spectrum).</summary>
+    public float NoiseLevelDb { get; private set; } = -120;
+
+    /// <summary>Share of the background noise that is hiss (above 4 kHz), 0..1.</summary>
+    public float HissShare { get; private set; }
+
+    /// <summary>Share of the background noise that is low rumble/fan (below 400 Hz), 0..1.</summary>
+    public float LowShare { get; private set; }
+
+    /// <summary>Keyboard/mouse clicks suppressed per minute.</summary>
+    public float ClicksPerMinute { get; private set; }
+
+    /// <summary>True while the current frame looks like speech.</summary>
+    public bool VoiceActive { get; private set; }
+
+    private void Classify()
+    {
+        float total = 0, voice = 0, voiceNoise = 0, high = 0, noiseTotal = 0, noiseHigh = 0, noiseLow = 0;
+        for (var k = 1; k < Bins; k++)
+        {
+            total += _power[k];
+            noiseTotal += _noise[k];
+            if (k <= VoiceHi) { voice += _power[k]; voiceNoise += _noise[k]; }
+            if (k >= HissLo) { high += _power[k]; noiseHigh += _noise[k]; }
+            if (k <= 2) noiseLow += _noise[k];
+        }
+
+        VoiceActive = voice > voiceNoise * 6f; // voice band ~8 dB over its noise floor
+        var jump = total > _prevTotal * 8f;    // > 9 dB sudden rise
+        if (_keys > 0 && jump && !VoiceActive && high > total * 0.35f)
+        {
+            _clickHold = 3; // ~8 ms
+            _clicksInWindow++;
+        }
+        _prevTotal = total;
+
+        // Window sum of |X|^2 for a sqrt-Hann window ≈ N/2 * mean-square; convert to dBFS per channel.
+        var norm = Channels * N / 2f * N / 2f;
+        NoiseLevelDb = 10 * MathF.Log10(MathF.Max(noiseTotal / norm, 1e-12f));
+        HissShare = noiseTotal > 0 ? noiseHigh / noiseTotal : 0;
+        LowShare = noiseTotal > 0 ? noiseLow / noiseTotal : 0;
+
+        if (++_classifyFrames >= SampleRate / Hop * 10) // 10 s window
+        {
+            ClicksPerMinute = _clicksInWindow * 6f;
+            _clicksInWindow = 0;
+            _classifyFrames = 0;
+        }
+    }
+
     /// <summary>Square-root periodic Hann: analysis × synthesis sums to exactly 1 at 50 % overlap.</summary>
     private static float[] MakeWindow() =>
         Enumerable.Range(0, N).Select(i => MathF.Sqrt(0.5f - 0.5f * MathF.Cos(2 * MathF.PI * i / N))).ToArray();
 }
 
-/// <summary>Slow automatic gain: brings quiet and loud talkers to the same level, like a broadcast leveler.</summary>
+/// <summary>
+/// Slow automatic gain: brings quiet and loud talkers to the same level, like a broadcast leveler. Speech is detected
+/// relative to the tracked noise floor (not a fixed level), so it also works for soft voices far from the mic, and
+/// noise between words is never pumped up.
+/// </summary>
 public sealed class AutoLevelEffect : Effect
 {
     private readonly EffectParameter _target, _maxGain, _speed;
-    private float _rms, _gainDb, _rmsCoef, _gainCoef;
-    private const float SpeechThreshold = 0.003f; // ~-50 dBFS: below this we hold, so noise isn't pumped up
+    private float _rms, _gainDb, _floorDb = -60, _rmsCoef, _gainCoef, _floorRise;
 
     public AutoLevelEffect() : base("leveler", "Auto Level", "Keeps your voice at a steady loudness whether you lean in or sit back.")
     {
         _target = Param("target", "Target", -30, -10, -18, "dB");
-        _maxGain = Param("maxgain", "Max boost", 0, 24, 9, "dB");
+        _maxGain = Param("maxgain", "Max boost", 0, 30, 20, "dB");
         _speed = Param("speed", "Speed", 200, 3000, 1000, "ms");
     }
 
     public override string Category => "dynamics";
 
-    protected override void Reset() { _rms = 0; _gainDb = 0; }
+    /// <summary>Gain currently applied, dB. For the UI.</summary>
+    public float GainDb => _gainDb;
+
+    private bool _primed;
+
+    protected override void Reset() { _rms = 0; _gainDb = 0; _floorDb = -60; _primed = false; }
 
     protected override void Update()
     {
         _rmsCoef = Coefficient(300);
         _gainCoef = Coefficient(_speed.Value);
+        _floorRise = 3f / SampleRate;
     }
 
     protected override void ProcessCore(Span<float> samples)
@@ -186,11 +269,23 @@ public sealed class AutoLevelEffect : Effect
             for (var c = 0; c < Channels; c++) sq += samples[f + c] * samples[f + c];
             _rms += (sq / Channels - _rms) * _rmsCoef;
 
-            var level = MathF.Sqrt(_rms);
-            if (level > SpeechThreshold)
+            var levelDb = GainToDb(MathF.Sqrt(_rms));
+            if (levelDb < _floorDb) _floorDb += (levelDb - _floorDb) * 0.0005f;
+            else _floorDb = MathF.Min(_floorDb + _floorRise, -30f);
+
+            // Speech = clearly above the room noise; otherwise hold the current gain.
+            if (levelDb > _floorDb + 10f && levelDb > -70f)
             {
-                var wanted = Math.Clamp(target - GainToDb(level), -12, max);
-                _gainDb += (wanted - _gainDb) * _gainCoef;
+                var wanted = Math.Clamp(target - levelDb, -12, max);
+                if (!_primed)
+                {
+                    // First words after start: jump most of the way so they aren't too quiet.
+                    _gainDb = wanted * 0.8f;
+                    _primed = true;
+                }
+                // Far off target (new speaker, moved away from the mic): catch up 4x faster.
+                var coef = MathF.Abs(wanted - _gainDb) > 6f ? MathF.Min(1f, _gainCoef * 4f) : _gainCoef;
+                _gainDb += (wanted - _gainDb) * coef;
             }
 
             var g = DbToGain(_gainDb);
@@ -355,7 +450,7 @@ public sealed class ReverbEffect : Effect
     }
 }
 
-internal static class Fft
+public static class Fft
 {
     /// <summary>In-place iterative radix-2 complex FFT. Inverse is scaled by 1/n.</summary>
     public static void Transform(float[] re, float[] im, bool inverse)

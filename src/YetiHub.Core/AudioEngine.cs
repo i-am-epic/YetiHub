@@ -30,12 +30,22 @@ public sealed class AudioEngine : IDisposable
     private LowLatencyCapture? _capture;
     private float[] _work = [];
     private float _outputPeak;
+    private double _dspLoad;
+
+    /// <summary>Last ~85 ms of the raw mic and processed output (mono), for the live spectrum/spectrogram.</summary>
+    public AnalyzerTap InputTap { get; } = new();
+    public AnalyzerTap OutputTap { get; } = new();
 
     public AudioEngine(YetiDevice device, EffectChain effects)
     {
         _device = device;
         Effects = effects;
+        // Read now, on the creating thread: the NAudio device object belongs to that thread's COM apartment,
+        // and Start() may run on a worker thread.
+        _captureId = device.Capture.ID;
     }
+
+    private readonly string _captureId;
 
     public EffectChain Effects { get; }
 
@@ -45,6 +55,25 @@ public sealed class AudioEngine : IDisposable
     public float OutputPeak => Volatile.Read(ref _outputPeak);
 
     public bool IsExclusive => _capture?.IsExclusive == true;
+    public int SampleRate => _capture?.Format.SampleRate ?? 48000;
+
+    /// <summary>Glitch counters and load: everything should read 0 / low for clean audio.</summary>
+    public AudioHealth Health
+    {
+        get
+        {
+            lock (_lock)
+            {
+                var monitor = _outputs.GetValueOrDefault(OutputRole.Monitor) ?? _outputs.Values.FirstOrDefault();
+                return new AudioHealth(
+                    _capture?.Glitches ?? 0,
+                    _outputs.Values.Sum(o => o.Underruns),
+                    monitor?.DriftPercent ?? 0,
+                    monitor?.QueuedMs ?? 0,
+                    Volatile.Read(ref _dspLoad) * 100);
+            }
+        }
+    }
     public double CapturePeriodMs => _capture?.PeriodMs ?? 0;
     public string CaptureFormat => _capture?.Format.ToString() ?? "";
 
@@ -62,7 +91,7 @@ public sealed class AudioEngine : IDisposable
     {
         if (_capture != null)
             return;
-        _capture = new LowLatencyCapture(_device.Capture.ID, exclusive);
+        _capture = new LowLatencyCapture(_captureId, exclusive);
         _capture.DataAvailable += OnData;
         _capture.Failed += ex => Error?.Invoke(this, "Capture stopped: " + ex.Message);
         _capture.Start();
@@ -102,8 +131,10 @@ public sealed class AudioEngine : IDisposable
 
     private void OnData(Span<float> samples)
     {
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
         var format = _capture!.Format;
         _device.ReportPeak(Dsp.Peak(samples));
+        InputTap.Write(samples, format.Channels);
 
         if (_work.Length < samples.Length)
             _work = new float[samples.Length * 2];
@@ -119,11 +150,18 @@ public sealed class AudioEngine : IDisposable
         }
 
         Volatile.Write(ref _outputPeak, Dsp.Peak(work));
+        Effects.Measure(work, format.SampleRate, format.Channels);
+        OutputTap.Write(work, format.Channels);
         foreach (var output in _outputSnapshot)
         {
             try { output.Write(work); }
             catch (Exception ex) { Error?.Invoke(this, "Output error: " + ex.Message); }
         }
+
+        // DSP load = processing time / packet duration, smoothed.
+        var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalSeconds;
+        var packet = samples.Length / (double)format.Channels / format.SampleRate;
+        Volatile.Write(ref _dspLoad, _dspLoad + (elapsed / packet - _dspLoad) * 0.05);
     }
 
     private void Run(IAudioProcessor processor, Span<float> work, StreamFormat format)
@@ -149,5 +187,45 @@ public sealed class AudioEngine : IDisposable
             _outputs.Clear();
             _outputSnapshot = [];
         }
+    }
+}
+
+/// <param name="MicGlitches">Mic packets Windows flagged as lost.</param>
+/// <param name="Underruns">Times an output ran dry (audible clicks).</param>
+/// <param name="DriftPercent">Current clock-drift correction.</param>
+/// <param name="QueuedMs">Audio waiting in the output device.</param>
+/// <param name="DspLoadPercent">Share of real time spent on effects.</param>
+public sealed record AudioHealth(int MicGlitches, int Underruns, double DriftPercent, double QueuedMs, double DspLoadPercent);
+
+/// <summary>
+/// Lock-free single-writer ring buffer of mono samples. The audio thread writes; the UI reads a snapshot.
+/// A torn read only affects one animation frame, which is fine for visualisation.
+/// </summary>
+public sealed class AnalyzerTap
+{
+    public const int Size = 4096;
+    private readonly float[] _ring = new float[Size];
+    private int _write;
+
+    public void Write(ReadOnlySpan<float> interleaved, int channels)
+    {
+        var w = _write;
+        for (var i = 0; i + channels <= interleaved.Length; i += channels)
+        {
+            var m = 0f;
+            for (var c = 0; c < channels; c++) m += interleaved[i + c];
+            _ring[w] = m / channels;
+            w = (w + 1) & (Size - 1);
+        }
+        Volatile.Write(ref _write, w);
+    }
+
+    /// <summary>Copies the newest <c>destination.Length</c> samples, oldest first.</summary>
+    public void Read(Span<float> destination)
+    {
+        var end = Volatile.Read(ref _write);
+        var start = (end - destination.Length) & (Size - 1);
+        for (var i = 0; i < destination.Length; i++)
+            destination[i] = _ring[(start + i) & (Size - 1)];
     }
 }

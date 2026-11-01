@@ -15,7 +15,7 @@ Releases are fully automated by [.github/workflows/release.yml](../.github/workf
 
 3. The workflow tests, builds self-contained `win-x64`, packages it, and publishes a GitHub Release with:
    - `YetiHub-win-Setup.exe`: first-time installer (per-user, no admin needed)
-   - `YetiHub-win-Portable.zip`
+   - `YetiHub-win-Portable.zip` (no install needed)
    - `*-full.nupkg` / `*-delta.nupkg` + `releases.win.json`: what installed copies download to update
 
 Installed copies check on startup, show "Version x is available", and update via **Install & restart**.

@@ -22,44 +22,74 @@ public sealed class LowCutEffect : Effect
     }
 }
 
-/// <summary>Downward expander: turns background noise down (not off) when you aren't talking.</summary>
+/// <summary>
+/// Adaptive downward expander. Instead of a fixed threshold (which chops quiet talkers) it tracks the room's noise
+/// floor and opens a set margin above it, with hysteresis (closes 5 dB lower than it opens) and a hold so word
+/// endings and short pauses are never cut. When closed it turns noise down, not off.
+/// </summary>
 public sealed class NoiseGateEffect : Effect
 {
-    private readonly EffectParameter _threshold, _range, _release;
-    private float _gain = 1, _threshLin, _floor, _attackCoef, _releaseCoef;
-    private int _holdSamples, _holdLeft;
+    private const float HysteresisDb = 5f;
 
-    public NoiseGateEffect() : base("gate", "Noise Gate", "Quiets keyboard, fans and room noise between words.")
+    private readonly EffectParameter _sensitivity, _range, _hold, _release;
+    private readonly Biquad _detectorHp = new();
+    private float _env, _floorDb = -70, _gain = 1, _rangeGain, _attackCoef, _releaseCoef, _envAtk, _envRel, _floorRise;
+    private int _holdSamples, _holdLeft;
+    private bool _open;
+
+    public NoiseGateEffect() : base("gate", "Noise Gate", "Learns your room and quiets it between words, without chopping them.")
     {
-        _threshold = Param("threshold", "Threshold", -80, -10, -50, "dB");
-        _range = Param("range", "Reduction", -80, 0, -40, "dB");
+        _sensitivity = Param("sensitivity", "Opens above noise", 3, 24, 9, "dB");
+        _range = Param("range", "Reduction", -80, 0, -30, "dB");
+        _hold = Param("hold", "Hold", 20, 500, 150, "ms");
         _release = Param("release", "Release", 20, 500, 150, "ms");
     }
 
     public override string Category => "clean";
 
+    /// <summary>Current estimate of the room's noise level, dBFS. For the UI.</summary>
+    public float NoiseFloorDb => _floorDb;
+    public bool IsOpen => _open;
+
+    protected override void Reset()
+    {
+        _detectorHp.EnsureChannels(1);
+        _detectorHp.Reset();
+        _env = 0;
+        _floorDb = -70;
+        _open = false;
+    }
+
     protected override void Update()
     {
-        _threshLin = DbToGain(_threshold.Value);
-        _floor = DbToGain(_range.Value);
-        _attackCoef = Coefficient(1);
+        _detectorHp.SetHighPass(SampleRate, 120); // hum and rumble mustn't hold the gate open
+        _rangeGain = DbToGain(_range.Value);
+        _attackCoef = Coefficient(0.5f);
         _releaseCoef = Coefficient(_release.Value);
-        _holdSamples = SampleRate / 20; // 50 ms hold stops the gate chattering on word endings
+        _envAtk = Coefficient(2);
+        _envRel = Coefficient(40);
+        _floorRise = 3f / SampleRate; // noise floor creeps up 3 dB/s, drops instantly
+        _holdSamples = (int)(_hold.Value * 0.001f * SampleRate);
     }
 
     protected override void ProcessCore(Span<float> samples)
     {
         for (var f = 0; f + Channels <= samples.Length; f += Channels)
         {
-            var level = 0f;
-            for (var c = 0; c < Channels; c++)
-                level = MathF.Max(level, MathF.Abs(samples[f + c]));
+            var mono = 0f;
+            for (var c = 0; c < Channels; c++) mono += samples[f + c];
+            var x = MathF.Abs(_detectorHp.Process(mono / Channels, 0));
+            _env += (x - _env) * (x > _env ? _envAtk : _envRel);
 
-            float target;
-            if (level >= _threshLin) { target = 1; _holdLeft = _holdSamples; }
-            else if (_holdLeft > 0) { target = 1; _holdLeft--; }
-            else target = _floor;
+            var envDb = GainToDb(_env);
+            if (envDb < _floorDb) _floorDb += (envDb - _floorDb) * 0.001f;
+            else _floorDb = MathF.Min(_floorDb + _floorRise, -25f);
 
+            var openAt = MathF.Max(_floorDb + _sensitivity.Value, -75f);
+            if (envDb > openAt) { _open = true; _holdLeft = _holdSamples; }
+            else if (_open && envDb < openAt - HysteresisDb && --_holdLeft <= 0) _open = false;
+
+            var target = _open ? 1f : _rangeGain;
             _gain += (target - _gain) * (target > _gain ? _attackCoef : _releaseCoef);
             for (var c = 0; c < Channels; c++)
                 samples[f + c] *= _gain;

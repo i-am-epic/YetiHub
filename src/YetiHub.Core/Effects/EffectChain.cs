@@ -10,17 +10,22 @@ public sealed class EffectChain : IAudioProcessor
 {
     public EffectChain()
     {
-        // Signal order: clean up → shape tone → control dynamics → colour → space → final level.
+        // Signal order: clean up → pitch → shape tone → control dynamics → de-ess (after compression, whose makeup
+        // gain would bring sibilance back) → colour → space → final level → loudness meter.
         Effects =
         [
             new MonoEffect(),
             new LowCutEffect(),
+            new PopFilterEffect(),
+            new HumRemoverEffect(),
             new NoiseReductionEffect(),
             new NoiseGateEffect(),
+            new AutoTuneEffect(),
+            new PitchShiftEffect(),
             new VoiceEqEffect(),
-            new DeEsserEffect(),
             new AutoLevelEffect(),
             new CompressorEffect(),
+            new DeEsserEffect(),
             new WarmthEffect(),
             new ExciterEffect(),
             new ReverbEffect(),
@@ -28,6 +33,11 @@ public sealed class EffectChain : IAudioProcessor
             new LimiterEffect(),
         ];
     }
+
+    /// <summary>Loudness of the processed voice (measured even when Voice FX is off).</summary>
+    public LoudnessMeter Loudness { get; } = new();
+
+    public T Get<T>() where T : Effect => Effects.OfType<T>().First();
 
     public string Name => "Voice FX";
     public bool Enabled { get; set; } = true;
@@ -46,6 +56,9 @@ public sealed class EffectChain : IAudioProcessor
                 effect.Process(samples, sampleRate, channels);
         }
     }
+
+    /// <summary>Called by the engine on the final signal (after mods) so the meter reflects what listeners hear.</summary>
+    public void Measure(ReadOnlySpan<float> samples, int sampleRate, int channels) => Loudness.Process(samples, sampleRate, channels);
 
     public Dictionary<string, EffectState> CaptureState() =>
         Effects.ToDictionary(e => e.Id, e => new EffectState

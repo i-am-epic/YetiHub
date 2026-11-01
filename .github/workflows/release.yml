@@ -41,7 +41,7 @@ jobs:
       - name: Pack
         run: >
           vpk pack --packId YetiHub --packVersion ${{ steps.v.outputs.version }}
-          --packDir publish --mainExe YetiHub.exe --packTitle YetiHub
+          --packDir publish --mainExe YetiHub.exe --packTitle YetiHub --icon src/YetiHub.App/Assets/yetihub.ico
           --releaseNotes CHANGELOG.md
 
       - name: Upload to GitHub Releases

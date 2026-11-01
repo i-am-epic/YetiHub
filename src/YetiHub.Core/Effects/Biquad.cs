@@ -35,6 +35,18 @@ public sealed class Biquad
         Set((1 + cos) / 2, -(1 + cos), (1 + cos) / 2, 1 + alpha, -2 * cos, 1 - alpha);
     }
 
+    public void SetLowPass(int sampleRate, float frequency, float q = 0.7071f)
+    {
+        var (cos, alpha) = Prewarp(sampleRate, frequency, q);
+        Set((1 - cos) / 2, 1 - cos, (1 - cos) / 2, 1 + alpha, -2 * cos, 1 - alpha);
+    }
+
+    public void SetNotch(int sampleRate, float frequency, float q)
+    {
+        var (cos, alpha) = Prewarp(sampleRate, frequency, q);
+        Set(1, -2 * cos, 1, 1 + alpha, -2 * cos, 1 - alpha);
+    }
+
     public void SetBandPass(int sampleRate, float frequency, float q)
     {
         var (cos, alpha) = Prewarp(sampleRate, frequency, q);

@@ -67,15 +67,19 @@ public class EffectTests
     }
 
     [Fact]
-    public void Gate_reduces_quiet_signal_by_its_range()
+    public void Gate_turns_steady_noise_down_by_its_range()
     {
         var gate = new NoiseGateEffect();
-        gate["threshold"].Value = -40;
         gate["range"].Value = -40;
         gate["release"].Value = 20;
-        var hiss = Enumerable.Repeat(0.001f, Rate).ToArray();
+        gate["hold"].Value = 20;
+        var rng = new Random(3);
+        var hiss = Enumerable.Range(0, Rate * 4).Select(_ => (float)(rng.NextDouble() - 0.5) * 0.002f).ToArray();
+        var before = hiss.Skip(hiss.Length - 4800).Select(MathF.Abs).Average();
         gate.Process(hiss, Rate, 2);
-        Assert.InRange(hiss[^1], 0.000009f, 0.000011f); // -40 dB of 0.001
+        var after = hiss.Skip(hiss.Length - 4800).Select(MathF.Abs).Average();
+        Assert.InRange(20 * MathF.Log10(after / before), -42f, -36f);
+        Assert.False(gate.IsOpen);
     }
 
     [Fact]

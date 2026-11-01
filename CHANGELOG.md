@@ -2,6 +2,23 @@
 
 All notable changes to YetiHub. The newest release is at the top; the release workflow ships this file as the release notes.
 
+## 0.3.0
+
+- **Fixed: words getting cut off.** The noise gate and Auto Level now adapt to your room's noise floor (gate with
+  hysteresis and a 150 ms hold) instead of fixed thresholds. Verified by new automated speech tests on every profile at
+  normal and soft speaking levels: no chopped syllables, output about −16 LUFS.
+- **Glitch-free output:** clock drift is corrected by inaudible adaptive resampling instead of dropping audio; the
+  output buffer self-tunes per device. New Audio Health monitor (dropouts, mic glitches, drift, DSP load).
+- **Noise cancelling upgrade:** learns your room without learning your voice, suppresses keyboard clicks, and
+  classifies noise (fan/rumble, hiss, hum, keyboard). New Hum Remover (auto 50/60 Hz) and Pop Filter.
+- **AutoTune** (key, scale, retune speed) and **Pitch Shift**; new Singer, Hard Tune and Deep Voice profiles.
+- **Live graphs:** spectrum (raw vs processed), voiceprint spectrogram, live waveform, and a LUFS loudness meter.
+- Research-based chain order (de-esser after compression) and loudness-matched standard profiles.
+- New logo and app icon; the installer uses it too.
+- The app never freezes if Windows audio stops responding (5 s watchdog with a clear message); visual errors are
+  logged to `crash.log` instead of closing the app; **Compatibility graphics** option for blank-window GPU issues.
+- Fixed: garbled characters in the Device page.
+
 ## 0.2.0
 
 - **New low-latency audio engine** (raw WASAPI, IAudioClient3, MMCSS "Pro Audio" thread): audio is written straight

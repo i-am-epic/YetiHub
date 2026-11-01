@@ -28,6 +28,8 @@ public sealed class LevelMeter : FrameworkElement
     /// <summary>Linear amplitude 0..1 for the hold marker.</summary>
     public double Peak { get => (double)GetValue(PeakProperty); set => SetValue(PeakProperty, value); }
 
+    public static float ToPositionF(float linear) => (float)ToPosition(linear);
+
     public static double ToPosition(double linear)
     {
         if (linear <= 0) return 0;

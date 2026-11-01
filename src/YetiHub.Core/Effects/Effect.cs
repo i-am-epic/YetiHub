@@ -41,15 +41,23 @@ public sealed class EffectParameter
         }
     }
 
+    private static readonly string[] NoteNames = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
+    private static readonly string[] ScaleNames = ["Chromatic", "Major", "Minor", "Pentatonic"];
+
     public string Display => Unit switch
     {
         "Hz" when _value >= 1000 => $"{_value / 1000:0.0} kHz",
         "Hz" => $"{_value:0} Hz",
         "dB" => $"{_value:+0.0;-0.0;0.0} dB",
         "-dB" => _value == 0 ? "0.0 dB" : $"-{_value:0.0} dB", // amounts of reduction, stored positive
-
         "ms" => $"{_value:0} ms",
         ":1" => $"{_value:0.0}:1",
+        "st" => $"{_value:+0.0;-0.0;0} st",
+        "key" => NoteNames[(int)Math.Round(_value) % 12],
+        "scale" => ScaleNames[(int)Math.Round(_value)],
+        "x" => $"{_value:0}×",
+        "Q" => $"Q {_value:0}",
+        "%" => $"{_value:0} %",
         _ => _value.ToString("0.##", CultureInfo.CurrentCulture) + " " + Unit,
     };
 }

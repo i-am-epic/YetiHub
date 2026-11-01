@@ -71,7 +71,7 @@ public sealed class MainViewModel : Observable, IDisposable
     public string DeviceTitle => _device?.Name ?? (_scanning ? "Looking for your Yeti…" : "No Yeti detected");
     public string DeviceStatus => _device is null
         ? (_scanning ? "Scanning USB devices" : "Plug your Yeti in over USB")
-        : "Connected · " + _device.EndpointName;
+        : DeviceProblem ?? "Connected · " + _device.EndpointName;
     public string UsbIds => _device is null ? "—" : $"VID {_device.Usb.VendorId:X4} · PID {_device.Usb.ProductId:X4}";
     public string Firmware => _device?.Usb.FirmwareRevision ?? "—";
     public string Format => _engine?.CaptureFormat is { Length: > 0 } f ? f : "—";
@@ -136,6 +136,34 @@ public sealed class MainViewModel : Observable, IDisposable
     private string _compression = "";
     public string Compression { get => _compression; private set => Set(ref _compression, value); }
 
+    // ---------------- analysis (updated 4x per second) ----------------
+    private string _loudnessText = "—";
+    public string LoudnessText { get => _loudnessText; private set => Set(ref _loudnessText, value); }
+
+    private string _loudnessGrade = "off";
+    /// <summary>"great" (on target -16 ±2), "good", "high" (way off), "off".</summary>
+    public string LoudnessGrade { get => _loudnessGrade; private set => Set(ref _loudnessGrade, value); }
+
+    private string _noiseLevel = "—";
+    public string NoiseLevel { get => _noiseLevel; private set => Set(ref _noiseLevel, value); }
+
+    private string _roomGrade = "—";
+    public string RoomGrade { get => _roomGrade; private set => Set(ref _roomGrade, value); }
+
+    public ObservableCollection<string> NoiseTypes { get; } = [];
+
+    private bool _voiceActive;
+    public bool VoiceActive { get => _voiceActive; private set => Set(ref _voiceActive, value); }
+
+    private string _healthText = "—";
+    public string HealthText { get => _healthText; private set => Set(ref _healthText, value); }
+
+    private bool _healthy = true;
+    public bool Healthy { get => _healthy; private set => Set(ref _healthy, value); }
+
+    private string _pitchText = "";
+    public string PitchText { get => _pitchText; private set => Set(ref _pitchText, value); }
+
     // ---------------- latency ----------------
     private string _latencyText = "—";
     /// <summary>Measured mic-to-ear delay of the monitor (or virtual mic) route.</summary>
@@ -144,6 +172,9 @@ public sealed class MainViewModel : Observable, IDisposable
     private string _latencyGrade = "off";
     /// <summary>"great" / "good" / "high" / "off": colours the badge.</summary>
     public string LatencyGrade { get => _latencyGrade; private set => Set(ref _latencyGrade, value); }
+
+    /// <summary>The running engine, for the live graphs (null while no Yeti).</summary>
+    public AudioEngine? Engine => _engine;
 
     public string EngineInfo => _engine is null
         ? "Not running"
@@ -158,7 +189,21 @@ public sealed class MainViewModel : Observable, IDisposable
             _settings.UltraLowLatency = value;
             _settings.Save();
             Raise();
-            RestartEngine();
+            _ = RestartEngineAsync();
+        }
+    }
+
+    /// <summary>Takes effect on next start.</summary>
+    public bool SoftwareRendering
+    {
+        get => _settings.SoftwareRendering;
+        set
+        {
+            if (_settings.SoftwareRendering == value) return;
+            _settings.SoftwareRendering = value;
+            _settings.Save();
+            Raise();
+            Log(value ? "Compatibility graphics on: restart YetiHub to apply." : "GPU graphics on: restart YetiHub to apply.");
         }
     }
 
@@ -191,7 +236,7 @@ public sealed class MainViewModel : Observable, IDisposable
             if (!value.IsAvailable || !Set(ref _monitorOutput, value) || _routingOutputs) return;
             _settings.MonitorDeviceId = value.Id;
             _settings.Save();
-            Route(OutputRole.Monitor, value);
+            _ = RouteAsync(OutputRole.Monitor, value);
         }
     }
 
@@ -205,7 +250,7 @@ public sealed class MainViewModel : Observable, IDisposable
             if (!value.IsAvailable || !Set(ref _virtualMicOutput, value) || _routingOutputs) return;
             _settings.VirtualMicDeviceId = value.Id;
             _settings.Save();
-            Route(OutputRole.VirtualMic, value);
+            _ = RouteAsync(OutputRole.VirtualMic, value);
         }
     }
 
@@ -449,41 +494,73 @@ public sealed class MainViewModel : Observable, IDisposable
         foreach (var d in found.Usb.Drivers)
             Drivers.Add(d);
 
-        StartEngine();
+        await StartEngineAsync();
         if (_activeProfile != null) ApplyProfile(_activeProfile);
         SyncFromDevice();
         RaiseDevice();
     }
 
-    private void StartEngine()
+    /// <summary>
+    /// Opens the audio engine off the UI thread with a watchdog. A wedged Windows audio driver can block these calls
+    /// forever; the UI must stay responsive and tell the user what to do instead of freezing.
+    /// </summary>
+    private async Task StartEngineAsync()
     {
         if (_device is null) return;
-        _engine = new AudioEngine(_device, _effects);
-        _engine.Error += (_, msg) => _ui.InvokeAsync(() => Log(msg));
-        _mods.Attach(_device, _engine);
-        try
+        var engine = new AudioEngine(_device, _effects);
+        engine.Error += (_, msg) => _ui.InvokeAsync(() => Log(msg));
+        var exclusive = _settings.UltraLowLatency;
+
+        var start = Task.Run(() => engine.Start(exclusive));
+        if (await Task.WhenAny(start, Task.Delay(AudioTimeout)) != start)
         {
-            _engine.Start(_settings.UltraLowLatency);
-            if (_settings.UltraLowLatency && !_engine.IsExclusive)
-                Log("Ultra-low latency unavailable (another app is using the Yeti); using shared mode.");
-            Log($"Audio engine: {EngineInfo}");
-            Route(OutputRole.Monitor, _monitorOutput);
-            Route(OutputRole.VirtualMic, _virtualMicOutput);
+            DeviceProblem = "Yeti not responding. Unplug it and plug it back in.";
+            Log("Windows audio did not answer within 5 s (the Yeti's driver is stuck). Replug the Yeti or restart Windows Audio.");
+            _ = start.ContinueWith(_ => engine.Dispose(), TaskScheduler.Default); // clean up if it ever returns
+            RaiseEngine();
+            return;
         }
-        catch (Exception ex)
+        if (start.IsFaulted)
         {
-            Log($"Could not open the mic: {ex.Message}. Check Settings > Privacy > Microphone.");
+            Log($"Could not open the mic: {start.Exception!.GetBaseException().Message}. Check Settings > Privacy > Microphone.");
+            engine.Dispose();
+            RaiseEngine();
+            return;
         }
-        Raise(nameof(EngineInfo));
-        Raise(nameof(Format));
+
+        DeviceProblem = null;
+        _engine = engine;
+        _mods.Attach(_device, engine);
+        if (exclusive && !engine.IsExclusive)
+            Log("Ultra-low latency unavailable (another app is using the Yeti); using shared mode.");
+        Log($"Audio engine: {EngineInfo}");
+        await RouteAsync(OutputRole.Monitor, _monitorOutput);
+        await RouteAsync(OutputRole.VirtualMic, _virtualMicOutput);
+        RaiseEngine();
     }
 
-    private void RestartEngine()
+    private static readonly TimeSpan AudioTimeout = TimeSpan.FromSeconds(5);
+
+    private void RaiseEngine()
+    {
+        Raise(nameof(EngineInfo));
+        Raise(nameof(Format));
+        Raise(nameof(Engine));
+        Raise(nameof(DeviceStatus));
+    }
+
+    private string? _deviceProblem;
+    /// <summary>Shown instead of the normal status when the audio driver misbehaves.</summary>
+    public string? DeviceProblem { get => _deviceProblem; private set { if (Set(ref _deviceProblem, value)) Raise(nameof(DeviceStatus)); } }
+
+    private async Task RestartEngineAsync()
     {
         _mods.Attach(null, null);
-        _engine?.Dispose();
+        var old = _engine;
         _engine = null;
-        StartEngine();
+        RaiseEngine();
+        if (old != null) await Task.Run(old.Dispose);
+        await StartEngineAsync();
     }
 
     private void RefreshOutputs()
@@ -514,29 +591,34 @@ public sealed class MainViewModel : Observable, IDisposable
         Raise(nameof(HasUnpluggedOutputs));
     }
 
-    private void Route(OutputRole role, OutputOption option)
+    private async Task RouteAsync(OutputRole role, OutputOption option)
     {
-        if (_engine is null) return;
-        try
+        var engine = _engine;
+        if (engine is null) return;
+        var route = Task.Run(() => engine.SetOutput(role, option.Id));
+        if (await Task.WhenAny(route, Task.Delay(AudioTimeout)) != route)
         {
-            _engine.SetOutput(role, option.Id);
-            if (option.Id != null) Log($"{(role == OutputRole.Monitor ? "Monitoring" : "Virtual mic")} → {option.Name}");
+            Log($"{option.Name} did not respond; try another output.");
+            return;
         }
-        catch (Exception ex)
-        {
-            Log($"Could not open {option.Name}: {ex.Message}");
-        }
+        if (route.IsFaulted)
+            Log($"Could not open {option.Name}: {route.Exception!.GetBaseException().Message}");
+        else if (option.Id != null)
+            Log($"{(role == OutputRole.Monitor ? "Monitoring" : "Virtual mic")} → {option.Name}");
     }
 
     private void DetachDevice()
     {
         _mods.Attach(null, null);
-        _engine?.Dispose();
+        var old = _engine;
         _engine = null;
+        // Never block the UI on driver teardown; give it a moment on app exit, then move on.
+        if (old != null) Task.Run(old.Dispose).Wait(TimeSpan.FromMilliseconds(1500));
         _device?.Dispose();
         _device = null;
         Drivers.Clear();
         Raise(nameof(EngineInfo));
+        Raise(nameof(Engine));
     }
 
     private void SyncFromDevice()
@@ -591,9 +673,68 @@ public sealed class MainViewModel : Observable, IDisposable
         var comp = (CompressorEffect)_effects["compressor"];
         Compression = comp.Enabled && _effects.Enabled && comp.GainReductionDb < -0.5 ? $"-{-comp.GainReductionDb:0.0} dB" : "";
 
+        UpdateAnalysis();
+
         var latency = _engine?.LatencyMs(OutputRole.Monitor) ?? _engine?.LatencyMs(OutputRole.VirtualMic);
         LatencyText = latency is { } ms ? $"{ms:0} ms" : "off";
         LatencyGrade = latency switch { null => "off", < 25 => "great", < 40 => "good", _ => "high" };
+    }
+
+    private static readonly string[] NoteNames = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
+
+    private void UpdateAnalysis()
+    {
+        if (_engine is null)
+        {
+            LoudnessText = NoiseLevel = RoomGrade = HealthText = "—";
+            LoudnessGrade = "off";
+            NoiseTypes.Clear();
+            return;
+        }
+
+        var lufs = _effects.Loudness.ShortTermLufs;
+        // Below about -50 LUFS nobody is talking; show a dash instead of a misleading number.
+        var talking = lufs > -50;
+        LoudnessText = talking ? $"{lufs:0.0}" : "—";
+        LoudnessGrade = !talking ? "off" : Math.Abs(lufs + 16) <= 2.5 ? "great" : Math.Abs(lufs + 16) <= 6 ? "good" : "high";
+
+        // Classify the room from the noise canceller's learned noise spectrum (it analyses even with low strength).
+        var nr = _effects.Get<NoiseReductionEffect>();
+        var gate = _effects.Get<NoiseGateEffect>();
+        var hum = _effects.Get<HumRemoverEffect>();
+        var floor = nr.Enabled && _effects.Enabled ? nr.NoiseLevelDb : gate.NoiseFloorDb;
+        NoiseLevel = $"{floor:0} dBFS";
+        RoomGrade = floor < -62 ? "Studio quiet" : floor < -52 ? "Quiet room" : floor < -44 ? "Some noise" : "Noisy room";
+        VoiceActive = nr.Enabled ? nr.VoiceActive : gate.IsOpen;
+
+        var types = new List<string>();
+        if (nr.Enabled && _effects.Enabled)
+        {
+            if (nr.LowShare > 0.45f) types.Add("Fan / rumble");
+            if (nr.HissShare > 0.35f) types.Add("Hiss");
+            if (nr.ClicksPerMinute >= 6) types.Add($"Keyboard · {nr.ClicksPerMinute:0}/min");
+        }
+        if (hum.Enabled && _effects.Enabled && hum.HumLevelDb > -72) types.Add($"{hum.MainsHz} Hz hum");
+        if (types.Count == 0) types.Add(floor < -62 ? "Clean" : "Broadband");
+        if (!types.SequenceEqual(NoiseTypes))
+        {
+            NoiseTypes.Clear();
+            foreach (var t in types) NoiseTypes.Add(t);
+        }
+
+        var h = _engine.Health;
+        Healthy = h.MicGlitches + h.Underruns == 0;
+        HealthText = $"{h.Underruns} dropouts · {h.MicGlitches} mic glitches · drift {h.DriftPercent:+0.00;-0.00}% · DSP {h.DspLoadPercent:0.0}%";
+
+        var tune = _effects.Get<AutoTuneEffect>();
+        if (tune.Enabled && _effects.Enabled && tune.DetectedHz > 0)
+        {
+            var midi = 69 + 12 * Math.Log2(tune.DetectedHz / 440);
+            var note = (int)Math.Round(midi);
+            var cents = (midi - note) * 100;
+            PitchText = $"{NoteNames[((note % 12) + 12) % 12]}{note / 12 - 1}  {cents:+0;-0} ¢";
+        }
+        else PitchText = "";
     }
 
     private void MakeDefault()
