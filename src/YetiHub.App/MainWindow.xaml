@@ -136,6 +136,67 @@
         </Setter.Value>
       </Setter>
     </Style>
+    <!-- Character gallery card: lights up with a gradient ring and lifts slightly when selected -->
+    <Style x:Key="CharacterCard" TargetType="ToggleButton">
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Foreground" Value="{StaticResource Text}" />
+      <Setter Property="Width" Value="150" />
+      <Setter Property="Height" Value="150" />
+      <Setter Property="Margin" Value="0,0,12,12" />
+      <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+      <Setter Property="RenderTransform">
+        <Setter.Value>
+          <ScaleTransform />
+        </Setter.Value>
+      </Setter>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ToggleButton">
+            <Grid>
+              <Border x:Name="ring" CornerRadius="18" Background="{StaticResource AccentGradient}" Opacity="0" />
+              <Border x:Name="face" CornerRadius="16" Margin="2" Background="#161A21" BorderBrush="#232833" BorderThickness="1" Padding="10">
+                <StackPanel VerticalAlignment="Center">
+                  <TextBlock x:Name="icon" Text="{Binding Emoji}" FontFamily="Segoe UI Emoji" FontSize="42" HorizontalAlignment="Center"
+                             Foreground="{StaticResource AccentGradient}" />
+                  <TextBlock Text="{Binding Name}" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,8,0,0" TextTrimming="CharacterEllipsis" />
+                  <TextBlock x:Name="state" Text="Tap to try" Style="{StaticResource Label}" FontSize="11" HorizontalAlignment="Center" />
+                </StackPanel>
+              </Border>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="face" Property="Background" Value="#1B2029" />
+                <Trigger.EnterActions>
+                  <BeginStoryboard>
+                    <Storyboard>
+                      <DoubleAnimation Storyboard.TargetProperty="RenderTransform.ScaleX" To="1.04" Duration="0:0:0.12" />
+                      <DoubleAnimation Storyboard.TargetProperty="RenderTransform.ScaleY" To="1.04" Duration="0:0:0.12" />
+                    </Storyboard>
+                  </BeginStoryboard>
+                </Trigger.EnterActions>
+                <Trigger.ExitActions>
+                  <BeginStoryboard>
+                    <Storyboard>
+                      <DoubleAnimation Storyboard.TargetProperty="RenderTransform.ScaleX" To="1" Duration="0:0:0.15" />
+                      <DoubleAnimation Storyboard.TargetProperty="RenderTransform.ScaleY" To="1" Duration="0:0:0.15" />
+                    </Storyboard>
+                  </BeginStoryboard>
+                </Trigger.ExitActions>
+              </Trigger>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="ring" Property="Opacity" Value="1" />
+                <Setter TargetName="face" Property="Background" Value="#151B26" />
+                <Setter TargetName="face" Property="BorderBrush" Value="Transparent" />
+                <Setter TargetName="icon" Property="Foreground" Value="White" />
+                <Setter TargetName="state" Property="Text" Value="&#x25CF; ACTIVE" />
+                <Setter TargetName="state" Property="Foreground" Value="{StaticResource Good}" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
   </Window.Resources>
 
   <Border x:Name="Root">
@@ -308,6 +369,20 @@
                    IsReadOnly="{Binding IsLocked}" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}" CaretBrush="{StaticResource Accent}"
                    FontWeight="SemiBold" FontSize="13" WindowChrome.IsHitTestVisibleInChrome="True" ToolTip="Click to rename your profile"
                    KeyDown="ProfileName_KeyDown" />
+          <Border CornerRadius="6" Padding="7,2" Margin="8,0,0,0" VerticalAlignment="Center" Background="#2A2212" BorderBrush="#5C4A1F" BorderThickness="1">
+            <Border.Style>
+              <Style TargetType="Border">
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding ActiveCharacter}" Value="None">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </Border.Style>
+            <TextBlock FontSize="11" Foreground="#FFB547">
+              <Run Text="&#x1F3AD;" FontFamily="Segoe UI Emoji" /> <Run Text="{Binding ActiveCharacter, Mode=OneWay}" />
+            </TextBlock>
+          </Border>
           <Border CornerRadius="6" Background="#1E232D" Padding="7,2" Margin="8,0,0,0" VerticalAlignment="Center"
                   Visibility="{Binding IsLocked, Converter={StaticResource BoolToVis}}">
             <StackPanel Orientation="Horizontal">
@@ -830,6 +905,32 @@
         <TabItem Header="MODS">
           <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="28,0,12,0">
             <StackPanel Style="{StaticResource Page}">
+              <Border Style="{StaticResource CardBox}" Visibility="{Binding HasCharacters, Converter={StaticResource BoolToVis}}">
+                <StackPanel>
+                  <DockPanel Margin="0,0,0,16">
+                    <Button DockPanel.Dock="Right" Content="No character" Command="{Binding ClearCharacterCommand}" VerticalAlignment="Center" />
+                    <StackPanel>
+                      <TextBlock Text="Character voices" Style="{StaticResource CardTitle}" />
+                      <TextBlock Style="{StaticResource Label}" Margin="0,4,0,0" TextWrapping="Wrap">
+                        <Run Text="Pick one; it plays on top of your profile and goes to Discord through the virtual mic. Active:" />
+                        <Run Text="{Binding ActiveCharacter, Mode=OneWay}" Foreground="{StaticResource Accent}" FontWeight="SemiBold" />
+                      </TextBlock>
+                    </StackPanel>
+                  </DockPanel>
+                  <ItemsControl ItemsSource="{Binding Characters}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <WrapPanel />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <ToggleButton Style="{StaticResource CharacterCard}" IsChecked="{Binding Enabled}" ToolTip="{Binding Description}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </Border>
               <Border Style="{StaticResource CardBox}">
                 <StackPanel>
                   <DockPanel Margin="0,0,0,14">
@@ -863,7 +964,7 @@
                   </ItemsControl>
                 </StackPanel>
               </Border>
-              <Border Style="{StaticResource CardBox}">
+              <Border Style="{StaticResource CardBox}" Visibility="{Binding HasOtherProcessors, Converter={StaticResource BoolToVis}}">
                 <StackPanel>
                   <TextBlock Text="Mod audio processors" Style="{StaticResource CardTitle}" Margin="0,0,0,4" />
                   <TextBlock Text="Run after Voice FX, on everything you hear and send." Style="{StaticResource Label}" Margin="0,0,0,14" />

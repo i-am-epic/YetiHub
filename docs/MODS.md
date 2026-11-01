@@ -48,6 +48,26 @@ What a mod can do through `IModContext`:
 `IAudioProcessor.Process` runs on the real-time audio thread. Don't block, allocate or throw in it.
 YetiHub disables a processor that throws.
 
+## 2b. Show up in the character gallery (API 1.1+)
+
+Implement `IProcessorInfo` on your processor to get a card with an emoji and description. Processors whose `Group` is
+`IProcessorInfo.CharacterGroup` appear in the **Character voices** gallery, where only one is active at a time:
+
+```csharp
+public sealed class Pirate : IAudioProcessor, IProcessorInfo
+{
+    public string Name => "Pirate";
+    public string Emoji => "🏴‍☠️";
+    public string Description => "Arr.";
+    public string Group => IProcessorInfo.CharacterGroup;
+    public bool Enabled { get; set; }
+    public void Process(Span<float> samples, int sampleRate, int channels) { /* … */ }
+}
+```
+
+See `mods/YetiHub.Mods.CharacterVoices` for 27 complete examples and a small DSP kit (filters, pitch shifter, delays,
+reverb, speech detector). YetiHub soft-limits everything after mods, so a mod can't clip the output.
+
 ## 3. Install it
 
 Copy the build output into `%APPDATA%\YetiHub\mods\<AssemblyName>\` (use **Open mods folder** in the app).

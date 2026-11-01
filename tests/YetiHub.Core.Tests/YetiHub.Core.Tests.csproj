@@ -13,5 +13,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\YetiHub.Core\YetiHub.Core.csproj" />
     <ProjectReference Include="..\..\mods\YetiHub.Mods.RobotVoice\YetiHub.Mods.RobotVoice.csproj" />
+    <ProjectReference Include="..\..\mods\YetiHub.Mods.CharacterVoices\YetiHub.Mods.CharacterVoices.csproj" />
   </ItemGroup>
 </Project>

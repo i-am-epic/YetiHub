@@ -58,6 +58,7 @@ public sealed class EffectParameter
         "x" => $"{_value:0}×",
         "Q" => $"Q {_value:0}",
         "%" => $"{_value:0} %",
+        "toggle" => _value >= 0.5f ? "On" : "Off",
         _ => _value.ToString("0.##", CultureInfo.CurrentCulture) + " " + Unit,
     };
 }

@@ -143,11 +143,15 @@ public sealed class AudioEngine : IDisposable
 
         if (Effects.Enabled)
             Run(Effects, work, format);
+        var anyMod = false;
         foreach (var processor in _processorSnapshot)
         {
-            if (processor.Enabled)
-                Run(processor, work, format);
+            if (!processor.Enabled) continue;
+            Run(processor, work, format);
+            anyMod = true;
         }
+        // Mods run after the Voice FX limiter, so guard the output: transparent below -3 dBFS, soft above.
+        if (anyMod) Dsp.SoftLimit(work);
 
         Volatile.Write(ref _outputPeak, Dsp.Peak(work));
         Effects.Measure(work, format.SampleRate, format.Channels);

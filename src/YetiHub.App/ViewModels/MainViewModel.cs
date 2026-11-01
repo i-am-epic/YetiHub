@@ -290,6 +290,17 @@ public sealed class MainViewModel : Observable, IDisposable
     public ObservableCollection<ProcessorRow> Processors { get; } = [];
     public ObservableCollection<string> ModFailures { get; } = [];
 
+    /// <summary>Character voices from mods: a gallery where only one is active at a time.</summary>
+    public ObservableCollection<ProcessorRow> Characters { get; } = [];
+
+    public bool HasCharacters => Characters.Count > 0;
+    public bool HasOtherProcessors => Processors.Count > 0;
+
+    private string _activeCharacter = "None";
+    public string ActiveCharacter { get => _activeCharacter; private set => Set(ref _activeCharacter, value); }
+
+    public RelayCommand ClearCharacterCommand { get; private set; } = null!;
+
     // ---------------- updates & log ----------------
     public string AppVersion => _updates.CurrentVersion;
 
@@ -444,14 +455,35 @@ public sealed class MainViewModel : Observable, IDisposable
         foreach (var p in _mods.Processors)
         {
             if (_settings.ProcessorStates.TryGetValue(p.Name, out var on)) p.Enabled = on;
-            Processors.Add(new ProcessorRow(p, OnProcessorToggled));
+            var row = new ProcessorRow(p, OnProcessorToggled);
+            if (row.IsCharacter) Characters.Add(row);
+            else Processors.Add(row);
         }
+
+        // Only one character at a time, even if old settings had several on.
+        foreach (var extra in Characters.Where(c => c.Enabled).Skip(1).ToList()) extra.Enabled = false;
+        ActiveCharacter = Characters.FirstOrDefault(c => c.Enabled)?.Name ?? "None";
+        ClearCharacterCommand = new RelayCommand(() => { foreach (var c in Characters) c.Enabled = false; }, () => Characters.Any(c => c.Enabled));
+        Raise(nameof(ClearCharacterCommand));
+        Raise(nameof(HasCharacters));
+        Raise(nameof(HasOtherProcessors));
     }
 
     private void OnProcessorToggled(IAudioProcessor p)
     {
+        // Picking a character switches off the previous one.
+        if (p.Enabled && p is IProcessorInfo { Group: IProcessorInfo.CharacterGroup })
+        {
+            foreach (var other in Characters.Where(c => c.Enabled && !c.Is(p)).ToList())
+                other.Enabled = false;
+        }
         _settings.ProcessorStates[p.Name] = p.Enabled;
         _settings.Save();
+
+        var active = Characters.FirstOrDefault(c => c.Enabled);
+        ActiveCharacter = active?.Name ?? "None";
+        if (p is IProcessorInfo { Group: IProcessorInfo.CharacterGroup })
+            Log(p.Enabled ? $"Character: {p.Name}" : $"Character off: {p.Name}");
     }
 
     // ---------------- device lifecycle ----------------
@@ -817,7 +849,14 @@ public sealed class ModRow(IYetiMod mod)
 
 public sealed class ProcessorRow(IAudioProcessor processor, Action<IAudioProcessor> toggled) : Observable
 {
+    private readonly IProcessorInfo? _info = processor as IProcessorInfo;
+
     public string Name => processor.Name;
+    public string Emoji => _info?.Emoji ?? "🎛️";
+    public string Description => _info?.Description ?? "";
+    public bool IsCharacter => _info?.Group == IProcessorInfo.CharacterGroup;
+
+    public bool Is(IAudioProcessor p) => ReferenceEquals(p, processor);
 
     public bool Enabled
     {

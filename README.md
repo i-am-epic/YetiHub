@@ -40,15 +40,20 @@ Prefer no installer? Grab `YetiHub-win-Portable.zip` from the [latest release](h
 | | |
 |---|---|
 | 🎙️ **Instant Yeti detection** | USB IDs, firmware, Windows drivers and hot-plug, in milliseconds |
-| 🔇 **Noise cancelling** | Spectral noise reduction that *learns your room*, keyboard-click suppression, 50/60 Hz hum removal, and automatic noise classification (fan, hiss, hum, keyboard) |
+| 🔇 **Noise cancelling** | OM-LSA speech enhancement with MCRA noise tracking: learns your room while you talk, removes fan, hiss, hum and keyboard clicks, classifies the noise, and has voice guards so words aren't cut |
 | 🎚️ **17-stage Voice FX** | Mono · Low Cut · Pop Filter · Hum Remover · Noise Cancelling · Noise Gate · AutoTune · Pitch Shift · Voice EQ · Auto Level · Compressor · De-Esser · Warmth · Exciter · Room Reverb · Output · Limiter |
-| 🎵 **AutoTune & voice changer** | Real-time pitch correction (key, scale, retune speed), Hard Tune, Pitch Shift, Deep Voice, Robot Voice mod |
+| 🎵 **AutoTune & voice changer** | Real-time pitch correction (key, scale, retune speed), Hard Tune, Pitch Shift and Deep Voice |
+| 🎭 **28 character voices** | Chipmunk, Demon, Dark Lord, Alien, Ghost, Astronaut, Walkie-Talkie, 8-Bit Hero, Cyborg and more, plus a **Tactical Agents** pack for team shooters (Shadow Operative, Toxin Specialist, Recon Drone, Command HQ…) in an animated one-click gallery |
 | 📊 **Live analyzers** | Spectrum (raw vs processed), scrolling voiceprint spectrogram, live waveform, LUFS loudness meter |
 | ⚡ **Ultra-low latency** | Custom WASAPI engine (IAudioClient3, MMCSS Pro Audio thread, adaptive drift resampling); ~20 ms mic-to-ear, with live measured latency and a glitch monitor |
 | 🗂️ **Profiles** | 13 studio-tuned standard profiles (read-only) plus unlimited editable copies, saved as JSON |
 | 🔌 **Virtual mic** | Send the processed voice to VB-CABLE/Voicemeeter for Discord, OBS, Zoom, Teams and games |
 | 🧩 **Mods** | Drop-in DLL plugins with real-time audio processors ([write one](docs/MODS.md)) |
 | 🔄 **Auto-update** | Delta updates from GitHub Releases |
+
+<p align="center">
+  <img src="docs/assets/screenshots/characters.png" width="860" alt="Character voice gallery with 28 voices" />
+</p>
 
 <p align="center">
   <img src="docs/assets/screenshots/voice-fx.png" width="49%" alt="Voice FX page with signal chain and effect knobs" />
@@ -124,7 +129,8 @@ dotnet run --project src/YetiHub.App
 src/YetiHub.App                 WPF app: UI, live graphs, settings, updater
 src/YetiHub.Core                Detection, low-latency WASAPI engine, DSP effects, profiles, mod host
 src/YetiHub.Mods.Abstractions   Public mod API (semver; breaking change = major bump)
-mods/YetiHub.Mods.RobotVoice    Sample mod
+mods/YetiHub.Mods.RobotVoice    Sample mod (simplest example)
+mods/YetiHub.Mods.CharacterVoices  Character Voice Pack + Tactical Agents Pack
 tests/YetiHub.Core.Tests        Unit tests + speech-quality regression tests
 docs/                           MODS.md, RELEASING.md, website (GitHub Pages)
 ```
@@ -133,7 +139,7 @@ Releasing: push a `vX.Y.Z` tag and GitHub Actions builds, tests, packages and pu
 
 ## 🗺️ Roadmap
 
-- Neural noise suppression model (RNNoise/DeepFilterNet) as an optional stage
+- Neural noise suppression model (RNNoise/DeepFilterNet) as an optional stage, to remove other voices/TV, which no statistical canceller can
 - Per-app automatic profiles and global hotkeys
 - Code-signed installer (removes the SmartScreen warning)
 - Yeti Nano / Yeti X / Yeti GX hardware IDs

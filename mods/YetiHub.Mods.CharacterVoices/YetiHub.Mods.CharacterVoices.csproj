@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Character voice pack: chipmunk, giant, demon, alien, ghost, radio, astronaut and more.</Description>
+    <Version>1.0.0</Version>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Private=false: the host provides the mod API; shipping a second copy would break type identity. -->
+    <ProjectReference Include="..\..\src\YetiHub.Mods.Abstractions\YetiHub.Mods.Abstractions.csproj" Private="false" ExcludeAssets="runtime" />
+  </ItemGroup>
+</Project>

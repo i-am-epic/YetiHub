@@ -19,7 +19,7 @@ public static class Presets
             Fx("leveler", ("target", -18), ("maxgain", 20), ("speed", 1500)),
             Fx("compressor", ("threshold", -22), ("ratio", 2.5f), ("attack", 10), ("release", 180), ("makeup", 3)),
             Fx("deesser", ("threshold", -28), ("frequency", 6500), ("amount", 5)),
-            Out(2.5f)),
+            Out(3.5f)),
 
         Make("std-broadcast", "Broadcast Pro", "Big, polished radio voice with weight and presence.",
             Cleanup(lowCut: 85, denoise: 15, strength: 50, sensitivity: 9, gateRange: -25),
@@ -75,7 +75,7 @@ public static class Presets
             Fx("leveler", ("target", -18), ("maxgain", 20), ("speed", 1000)),
             Fx("compressor", ("threshold", -22), ("ratio", 3), ("attack", 6), ("release", 150), ("makeup", 4)),
             Fx("deesser", ("threshold", -28), ("frequency", 7000), ("amount", 6)),
-            Out(2)),
+            Out(3)),
 
         Make("std-intimate", "Warm & Intimate", "Soft, close and velvety for late-night talk and ASMR.",
             Cleanup(lowCut: 55, denoise: 20, strength: 55, sensitivity: 10, gateRange: -15),

@@ -5,6 +5,7 @@
     <Project Path="src/YetiHub.Mods.Abstractions/YetiHub.Mods.Abstractions.csproj" />
   </Folder>
   <Folder Name="/mods/">
+    <Project Path="mods/YetiHub.Mods.CharacterVoices/YetiHub.Mods.CharacterVoices.csproj" />
     <Project Path="mods/YetiHub.Mods.RobotVoice/YetiHub.Mods.RobotVoice.csproj" />
   </Folder>
   <Folder Name="/tests/">

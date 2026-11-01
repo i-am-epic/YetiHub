@@ -15,8 +15,12 @@ public sealed class RobotVoiceMod : IYetiMod
     public void OnUnload() { }
 }
 
-public sealed class RobotVoiceProcessor : IAudioProcessor
+public sealed class RobotVoiceProcessor : IAudioProcessor, IProcessorInfo
 {
+    public string Description => "Classic ring-modulated robot. Beep boop.";
+    public string Emoji => "🤖";
+    public string Group => IProcessorInfo.CharacterGroup;
+
     private double _phase;
 
     public string Name => "Robot Voice";

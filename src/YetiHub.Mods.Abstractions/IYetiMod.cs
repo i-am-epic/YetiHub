@@ -52,3 +52,20 @@ public interface IAudioProcessor
     /// <param name="samples">Interleaved 32-bit float samples, modified in place.</param>
     void Process(Span<float> samples, int sampleRate, int channels);
 }
+
+/// <summary>
+/// Optional extra details an <see cref="IAudioProcessor"/> can expose so YetiHub can show it nicely (API 1.1+).
+/// Processors in the <see cref="CharacterGroup"/> are shown as a character gallery where only one is active at a time.
+/// </summary>
+public interface IProcessorInfo
+{
+    public const string CharacterGroup = "Character";
+
+    string Description { get; }
+
+    /// <summary>A single emoji used as the card icon.</summary>
+    string Emoji { get; }
+
+    /// <summary><see cref="CharacterGroup"/> for voice characters; anything else is listed as a regular processor.</summary>
+    string Group { get; }
+}

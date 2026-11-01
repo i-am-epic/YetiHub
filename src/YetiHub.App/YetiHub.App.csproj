@@ -19,6 +19,7 @@
     <ProjectReference Include="..\YetiHub.Core\YetiHub.Core.csproj" />
     <!-- Bundled mods are built with the app but loaded at runtime from bin\mods\, exactly like third-party mods. -->
     <ProjectReference Include="..\..\mods\YetiHub.Mods.RobotVoice\YetiHub.Mods.RobotVoice.csproj" ReferenceOutputAssembly="false" OutputItemType="BundledMod" />
+    <ProjectReference Include="..\..\mods\YetiHub.Mods.CharacterVoices\YetiHub.Mods.CharacterVoices.csproj" ReferenceOutputAssembly="false" OutputItemType="BundledMod" />
   </ItemGroup>
   <Target Name="IncludeBundledMods" AfterTargets="ResolveProjectReferences">
     <ItemGroup>

@@ -2,6 +2,22 @@
 
 All notable changes to YetiHub. The newest release is at the top; the release workflow ships this file as the release notes.
 
+## 0.4.0
+
+- **New noise cancelling engine** (OM-LSA with MCRA noise tracking): per-frequency speech-presence estimation,
+  decision-directed log-spectral gain, frame-level and per-frequency voice guards, and release hangover.
+  Measured on a speech bench (TTS speech + fan, hiss, keyboard, hum, TV): **9.5 dB of noise removed vs 7.3 dB before
+  (fan noise 9.4 vs 6.0 dB, hiss 14.6 vs 10.6 dB)** with audible voice cuts at 0.3 %. The Strength knob now follows the
+  measured removal vs voice-safety curve; new **High quality** mode (512-point frames) for low fan rumble.
+- **Character Voice Pack** (mod): Chipmunk, Giant, Demon, Dark Lord, Alien, Goblin, Angel Choir, Ghost, Underwater,
+  Canyon Echo, Astronaut (with mission-control beeps), Walkie-Talkie (with squelch), 1940s Radio, Telephone, Megaphone,
+  8-Bit Hero, Cyborg.
+- **Tactical Agents Pack** (mod): 10 original agent voices for team shooters: Shadow Operative, Toxin Specialist,
+  Combat Android, Field Medic, Recon Drone, Demolitions, Command HQ, Cryo Agent, Storm Duelist, Sentinel AI.
+- **Character gallery** in the Mods tab: animated cards, one character at a time, active character shown in the title bar.
+- Mod API 1.1: optional `IProcessorInfo` (emoji, description, group) for gallery cards. Existing mods keep working.
+- Output safety limiter after mods, so no voice mod can clip or send NaN to Discord.
+
 ## 0.3.0
 
 - **Fixed: words getting cut off.** The noise gate and Auto Level now adapt to your room's noise floor (gate with
