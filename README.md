@@ -13,6 +13,7 @@
   <a href="https://github.com/i-am-epic/YetiHub/releases/latest/download/YetiHub-win-Setup.exe"><img alt="Download for Windows" src="https://img.shields.io/badge/Download-Windows%20installer-00B8FC?style=for-the-badge&logo=windows&logoColor=white"></a>
   <a href="https://github.com/i-am-epic/YetiHub/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/i-am-epic/YetiHub?style=for-the-badge&color=7B61FF"></a>
   <a href="https://github.com/i-am-epic/YetiHub/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/i-am-epic/YetiHub/total?style=for-the-badge&color=2EE6A6"></a>
+  <a href="https://yetihub.vercel.app"><img alt="Website" src="https://img.shields.io/badge/website-yetihub.vercel.app-00B8FC?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-lightgrey?style=for-the-badge"></a>
 </p>
 
