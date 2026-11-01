@@ -19,6 +19,8 @@ public partial class MainWindow : Window
         {
             // A maximized chrome-less window overhangs the screen by the resize border; pad it back in.
             Root.Margin = WindowState == WindowState.Maximized ? new Thickness(7) : new Thickness(0);
+            // Nothing animates while minimized; the audio keeps running.
+            Controls.UiClock.Paused = WindowState == WindowState.Minimized;
             MaxButton.Content = WindowState == WindowState.Maximized ? "" : "";
         };
     }

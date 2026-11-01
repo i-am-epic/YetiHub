@@ -369,6 +369,10 @@
                    IsReadOnly="{Binding IsLocked}" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}" CaretBrush="{StaticResource Accent}"
                    FontWeight="SemiBold" FontSize="13" WindowChrome.IsHitTestVisibleInChrome="True" ToolTip="Click to rename your profile"
                    KeyDown="ProfileName_KeyDown" />
+          <Border CornerRadius="6" Padding="7,2" Margin="8,0,0,0" VerticalAlignment="Center" Background="#2A1218" BorderBrush="#5C1F2C" BorderThickness="1"
+                  Visibility="{Binding HardwareMuted, Converter={StaticResource BoolToVis}}">
+            <TextBlock Text="MIC MUTED ON YETI" FontSize="11" FontWeight="Bold" Foreground="{StaticResource Bad}" />
+          </Border>
           <Border CornerRadius="6" Padding="7,2" Margin="8,0,0,0" VerticalAlignment="Center" Background="#2A2212" BorderBrush="#5C4A1F" BorderThickness="1">
             <Border.Style>
               <Style TargetType="Border">
@@ -508,6 +512,16 @@
                                      Visibility="{Binding IsDefault, Converter={StaticResource BoolToVis}}" />
                         </StackPanel>
                       </StackPanel>
+                      <Border CornerRadius="10" Padding="12,8" Margin="0,14,0,0" Background="#2A1218" BorderBrush="#5C1F2C" BorderThickness="1"
+                              Visibility="{Binding HardwareMuted, Converter={StaticResource BoolToVis}}">
+                        <StackPanel Orientation="Horizontal">
+                          <TextBlock Text="&#xE74F;" FontFamily="{StaticResource Icons}" Foreground="{StaticResource Bad}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                          <StackPanel>
+                            <TextBlock Text="Muted on your Yeti" FontWeight="SemiBold" Foreground="{StaticResource Bad}" />
+                            <TextBlock Text="Press the red button on the front of the mic to unmute." Style="{StaticResource Label}" FontSize="11" />
+                          </StackPanel>
+                        </StackPanel>
+                      </Border>
                     </StackPanel>
                   </Grid>
                 </Border>

@@ -9,6 +9,6 @@
     <Product>YetiHub</Product>
     <Copyright>Copyright (c) 2026 YetiHub contributors</Copyright>
     <!-- CI overrides this with -p:Version=x.y.z taken from the git tag. -->
-    <Version>0.4.0</Version>
+    <Version>0.4.1</Version>
   </PropertyGroup>
 </Project>

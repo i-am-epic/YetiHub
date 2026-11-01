@@ -32,18 +32,12 @@ public abstract class LiveGraph : FrameworkElement
         if (Disabled) on = false;
         if (on == _hooked) return;
         _hooked = on;
-        if (on) CompositionTarget.Rendering += OnFrame;
-        else CompositionTarget.Rendering -= OnFrame;
+        if (on) UiClock.Tick += OnTick;
+        else UiClock.Tick -= OnTick;
     }
 
-    private TimeSpan _last;
-
-    private void OnFrame(object? sender, EventArgs e)
+    private void OnTick(double dt)
     {
-        var t = ((RenderingEventArgs)e).RenderingTime;
-        if (t == _last) return;
-        var dt = _last == TimeSpan.Zero ? 1 / 60.0 : Math.Clamp((t - _last).TotalSeconds, 0, 0.1);
-        _last = t;
         try
         {
             Tick(dt);
@@ -260,6 +254,19 @@ public sealed class WaveformView : LiveGraph
                 new GradientStop(Color.FromRgb(0xFF, 0x7A, 0xC6), 1),
             ], new Point(0, 0), new Point(0, 1));
         _loud.Freeze();
+        _loudFades = Enumerable.Range(0, Fades).Select(i => Faded(_loud, 0.25 + 0.75 * i / (Fades - 1))).ToArray();
+        _quietFades = Enumerable.Range(0, Fades).Select(i => Faded(Quiet, 0.25 + 0.75 * i / (Fades - 1))).ToArray();
+    }
+
+    private const int Fades = 6;
+    private readonly Brush[] _loudFades, _quietFades;
+
+    private static Brush Faded(Brush b, double opacity)
+    {
+        var c = b.CloneCurrentValue();
+        c.Opacity = opacity;
+        c.Freeze();
+        return c;
     }
 
     protected override void Tick(double dt)
@@ -291,10 +298,9 @@ public sealed class WaveformView : LiveGraph
         {
             var v = _peaks[(_head + i) % Columns];
             var half = Math.Max(1.5, v * (h / 2 - 2));
-            // Newest columns on the right are brightest.
-            dc.PushOpacity(0.25 + 0.75 * i / Columns);
-            dc.DrawRoundedRectangle(v > 0.12 ? _loud : Quiet, null, new Rect(i * bw + 1, mid - half, Math.Max(1, bw - 2), half * 2), 1.5, 1.5);
-            dc.Pop();
+            // Newest columns on the right are brightest (6 pre-built fade steps instead of an opacity layer per bar).
+            var step = Math.Min(Fades - 1, i * Fades / Columns);
+            dc.DrawRoundedRectangle(v > 0.12 ? _loudFades[step] : _quietFades[step], null, new Rect(i * bw + 1, mid - half, Math.Max(1, bw - 2), half * 2), 1.5, 1.5);
         }
     }
 }

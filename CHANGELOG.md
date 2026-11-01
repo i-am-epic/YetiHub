@@ -2,6 +2,18 @@
 
 All notable changes to YetiHub. The newest release is at the top; the release workflow ships this file as the release notes.
 
+## 0.4.1
+
+- **Much lower CPU use.** Meters and graphs now run on one shared 30 fps clock instead of every display refresh
+  (165 times a second on high-refresh monitors), redraw only when something visibly changes, and stop completely
+  while YetiHub is minimized. Measured on a 6-core PC (% of one core, steady state):
+  visible 79% → **10%** with Compatibility graphics on, about **4%** with GPU graphics; minimized 12% → **1–6%**.
+- **"Muted on your Yeti" warning.** The Yeti's red mute button never tells Windows, so YetiHub detects it from the
+  audio (a muted Yeti sends exact digital silence) and shows a warning on the Microphone page and in the title bar.
+- New [docs/HARDWARE.md](docs/HARDWARE.md): what the Yeti exposes over USB (HID collections, the vendor channel YetiHub
+  deliberately doesn't touch), how G HUB applies Blue VO!CE (an Audio Processing Object inside Windows' audio
+  engine), and the measured latency limits of this hardware.
+
 ## 0.4.0
 
 - **New noise cancelling engine** (OM-LSA with MCRA noise tracking): per-frequency speech-presence estimation,

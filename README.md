@@ -97,6 +97,8 @@ handles noise. Doubling up is the most common cause of cut-off words.
 **Does it work with Yeti Nano, Yeti X or Snowball?** The original Yeti is fully supported. Other Blue mics are detected
 generically; add their USB IDs to [`KnownDevices.cs`](src/YetiHub.Core/KnownDevices.cs) and open a PR.
 
+**How does Logitech's software work, and can YetiHub do the same?** See [docs/HARDWARE.md](docs/HARDWARE.md): what the Yeti exposes over USB, how G HUB injects Blue VO!CE into Windows' audio engine, and YetiHub's plan to do the same.
+
 **Does it update the Yeti's firmware or drivers?** No. The Yeti runs on Microsoft's built-in USB audio drivers, and Logitech
 never published a firmware tool for it. YetiHub shows what's installed and never writes to the device.
 
@@ -139,6 +141,7 @@ Releasing: push a `vX.Y.Z` tag and GitHub Actions builds, tests, packages and pu
 
 ## 🗺️ Roadmap
 
+- Native APO (Windows audio-engine plug-in) so effects reach every app without VB-CABLE, like G HUB's Blue VO!CE
 - Neural noise suppression model (RNNoise/DeepFilterNet) as an optional stage, to remove other voices/TV, which no statistical canceller can
 - Per-app automatic profiles and global hotkeys
 - Code-signed installer (removes the SmartScreen warning)

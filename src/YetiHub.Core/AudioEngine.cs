@@ -55,6 +55,12 @@ public sealed class AudioEngine : IDisposable
     public float OutputPeak => Volatile.Read(ref _outputPeak);
 
     public bool IsExclusive => _capture?.IsExclusive == true;
+
+    private long _zeroFrames;
+    private bool _hardwareMuted;
+
+    /// <summary>True while the Yeti's physical mute button is on (detected from exact digital silence).</summary>
+    public bool HardwareMuted => Volatile.Read(ref _hardwareMuted);
     public int SampleRate => _capture?.Format.SampleRate ?? 48000;
 
     /// <summary>Glitch counters and load: everything should read 0 / low for clean audio.</summary>
@@ -133,7 +139,13 @@ public sealed class AudioEngine : IDisposable
     {
         var started = System.Diagnostics.Stopwatch.GetTimestamp();
         var format = _capture!.Format;
-        _device.ReportPeak(Dsp.Peak(samples));
+        var peak = Dsp.Peak(samples);
+        _device.ReportPeak(peak);
+
+        // The Yeti's own mute button never notifies Windows (its HID buttons aren't wired), but a muted Yeti sends
+        // perfect digital silence, which a real room never does. 300 ms of exact zeros = muted on the mic.
+        _zeroFrames = peak == 0 ? _zeroFrames + samples.Length / Math.Max(1, _capture!.Format.Channels) : 0;
+        Volatile.Write(ref _hardwareMuted, _zeroFrames > _capture!.Format.SampleRate * 3 / 10);
         InputTap.Write(samples, format.Channels);
 
         if (_work.Length < samples.Length)

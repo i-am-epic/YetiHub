@@ -34,8 +34,6 @@ public sealed class MainViewModel : Observable, IDisposable
     private bool _applyingProfile;
     private bool _scanning = true;
     private bool _routingOutputs;
-    private TimeSpan _lastFrame;
-    private TimeSpan _lastStats;
 
     public MainViewModel()
     {
@@ -121,7 +119,16 @@ public sealed class MainViewModel : Observable, IDisposable
     }
 
     // ---------------- meters (updated every frame) ----------------
-    private double _inputLevel, _inputPeak, _outputLevel, _outputPeak, _peakHoldIn, _peakHoldOut, _glow;
+    private double _inputLevel, _inputPeak, _outputLevel, _outputPeak, _peakHoldIn, _peakHoldOut, _glow, _rawIn, _rawOut;
+
+    private void SetIfMoved(ref double field, double value, string name)
+    {
+        var a = Controls.LevelMeter.ToPosition(field);
+        var b = Controls.LevelMeter.ToPosition(value);
+        if (Math.Abs(a - b) < 1.0 / 96 && !(value == 0 && field != 0)) return;
+        field = value;
+        Raise(name);
+    }
     public double InputLevel { get => _inputLevel; private set => Set(ref _inputLevel, value); }
     public double InputPeak { get => _inputPeak; private set => Set(ref _inputPeak, value); }
     public double OutputLevel { get => _outputLevel; private set => Set(ref _outputLevel, value); }
@@ -160,6 +167,18 @@ public sealed class MainViewModel : Observable, IDisposable
 
     private bool _healthy = true;
     public bool Healthy { get => _healthy; private set => Set(ref _healthy, value); }
+
+    private bool _hardwareMuted;
+    /// <summary>The Yeti's own red mute button is on (it never tells Windows, so we detect it from the audio).</summary>
+    public bool HardwareMuted
+    {
+        get => _hardwareMuted;
+        private set
+        {
+            if (!Set(ref _hardwareMuted, value)) return;
+            Log(value ? "The Yeti's mute button is ON: nobody can hear you. Press the red button on the mic." : "The Yeti's mute button is off again.");
+        }
+    }
 
     private string _pitchText = "";
     public string PitchText { get => _pitchText; private set => Set(ref _pitchText, value); }
@@ -327,7 +346,7 @@ public sealed class MainViewModel : Observable, IDisposable
     {
         LoadProfiles();
         LoadMods();
-        CompositionTarget.Rendering += OnFrame;
+        Controls.UiClock.Tick += OnFrame;
 
         await RescanAsync();
 
@@ -674,33 +693,36 @@ public sealed class MainViewModel : Observable, IDisposable
             Raise(p);
     }
 
-    private void OnFrame(object? sender, EventArgs e)
-    {
-        // Rendering fires once per display refresh; scale the meter release by real elapsed time.
-        var now = ((RenderingEventArgs)e).RenderingTime;
-        if (now == _lastFrame) return;
-        var dt = Math.Clamp((now - _lastFrame).TotalSeconds, 0, 0.1);
-        _lastFrame = now;
+    private double _statsTimer;
 
+    private void OnFrame(double dt)
+    {
         var decay = Math.Pow(0.02, dt);       // ~-34 dB per second release
         var holdDecay = Math.Pow(0.3, dt);
 
         var inPeak = _device?.PeakLevel ?? 0;
         var outPeak = _engine?.OutputPeak ?? 0;
-        InputLevel = inPeak > _inputLevel ? inPeak : _inputLevel * decay;
-        OutputLevel = outPeak > _outputLevel ? outPeak : _outputLevel * decay;
-        _peakHoldIn = Math.Max(InputLevel, _peakHoldIn * holdDecay);
-        _peakHoldOut = Math.Max(OutputLevel, _peakHoldOut * holdDecay);
-        InputPeak = _peakHoldIn;
-        OutputPeak = _peakHoldOut;
-        Glow = Controls.LevelMeter.ToPosition(InputLevel);
+        _rawIn = inPeak > _rawIn ? inPeak : _rawIn * decay;
+        _rawOut = outPeak > _rawOut ? outPeak : _rawOut * decay;
+        _peakHoldIn = Math.Max(_rawIn, _peakHoldIn * holdDecay);
+        _peakHoldOut = Math.Max(_rawOut, _peakHoldOut * holdDecay);
 
-        var db = Dsp.ToDecibels((float)InputLevel);
+        // Only push values to the UI when they move a visible amount (about one meter segment), so bindings and
+        // redraws don't fire for invisible changes.
+        SetIfMoved(ref _inputLevel, _rawIn, nameof(InputLevel));
+        SetIfMoved(ref _outputLevel, _rawOut, nameof(OutputLevel));
+        SetIfMoved(ref _inputPeak, _peakHoldIn, nameof(InputPeak));
+        SetIfMoved(ref _outputPeak, _peakHoldOut, nameof(OutputPeak));
+        var glow = Math.Round(Controls.LevelMeter.ToPosition(_rawIn) * 20) / 20;
+        if (glow != _glow) Glow = glow;
+
+        var db = Dsp.ToDecibels((float)_rawIn);
         InputDb = _device is null || db < -60 ? "-∞" : $"{db:0}";
 
-        // Text stats don't need 60 fps.
-        if (now - _lastStats < TimeSpan.FromMilliseconds(250)) return;
-        _lastStats = now;
+        // Text stats don't need animation rate.
+        _statsTimer += dt;
+        if (_statsTimer < 0.25) return;
+        _statsTimer = 0;
 
         var comp = (CompressorEffect)_effects["compressor"];
         Compression = comp.Enabled && _effects.Enabled && comp.GainReductionDb < -0.5 ? $"-{-comp.GainReductionDb:0.0} dB" : "";
@@ -753,6 +775,8 @@ public sealed class MainViewModel : Observable, IDisposable
             NoiseTypes.Clear();
             foreach (var t in types) NoiseTypes.Add(t);
         }
+
+        HardwareMuted = _engine.HardwareMuted && !IsMuted;
 
         var h = _engine.Health;
         Healthy = h.MicGlitches + h.Underruns == 0;
@@ -832,7 +856,7 @@ public sealed class MainViewModel : Observable, IDisposable
 
     public void Dispose()
     {
-        CompositionTarget.Rendering -= OnFrame;
+        Controls.UiClock.Tick -= OnFrame;
         SaveActiveProfile();
         DetachDevice();
         _mods.Dispose();
