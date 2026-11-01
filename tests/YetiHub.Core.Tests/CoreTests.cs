@@ -154,27 +154,133 @@ public class ProfileTests
     public void Presets_only_reference_real_effects_and_parameters()
     {
         var chain = new EffectChain();
-        foreach (var preset in Presets.All())
+        foreach (var preset in Presets.All)
         foreach (var (id, state) in preset.Effects)
         foreach (var param in state.Parameters.Keys)
             Assert.Contains(chain[id].Parameters, p => p.Id == param);
     }
 
     [Fact]
-    public void Store_seeds_presets_and_persists_edits()
+    public void Store_keeps_user_profiles_and_drops_legacy_seeds()
     {
         var dir = Path.Combine(Path.GetTempPath(), "yetihub-test-" + Guid.NewGuid().ToString("n"));
         try
         {
             var store = new ProfileStore(dir);
-            var all = store.LoadAll();
-            Assert.Equal(Presets.All().Count(), all.Count);
+            Assert.Empty(store.LoadUserProfiles());
 
-            all[0].Name = "Renamed";
-            store.Save(all[0]);
-            Assert.Contains(new ProfileStore(dir).LoadAll(), p => p.Name == "Renamed");
+            store.Save(new Profile { Id = "broadcast", Name = "old v0.1.0 seed" });
+            var mine = Presets.All[0].Clone("Mine");
+            store.Save(mine);
+
+            var loaded = new ProfileStore(dir).LoadUserProfiles();
+            Assert.Single(loaded);
+            Assert.Equal("Mine", loaded[0].Name);
+            Assert.False(loaded[0].IsBuiltIn);
         }
         finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void Standard_profiles_are_read_only_but_duplicates_are_not()
+    {
+        var store = new ProfileStore(Path.GetTempPath());
+        Assert.All(Presets.All, p => Assert.True(p.IsBuiltIn));
+        Assert.Throws<InvalidOperationException>(() => store.Save(Presets.All[0]));
+        Assert.False(Presets.All[0].Clone("copy").IsBuiltIn);
+    }
+
+    [Fact]
+    public void Standard_profile_ids_are_unique() =>
+        Assert.Equal(Presets.All.Count, Presets.All.Select(p => p.Id).Distinct().Count());
+}
+
+public class MoreEffectTests
+{
+    private const int Rate = 48000;
+
+    [Fact]
+    public void Noise_reduction_with_no_reduction_reconstructs_the_input()
+    {
+        var nr = new NoiseReductionEffect();
+        nr["amount"].Value = 0; // floor = 1: every bin passes untouched
+        var input = Enumerable.Range(0, 9600).Select(i => 0.3f * MathF.Sin(i * 0.05f + (i % 2) * 0.3f)).ToArray();
+        var output = (float[])input.Clone();
+        nr.Process(output, Rate, 2);
+
+        const int delay = 256 * 2; // one 256-sample window, stereo interleaved
+        for (var i = 2000; i < input.Length; i++)
+            Assert.Equal(input[i - delay], output[i], 1e-4f);
+    }
+
+    [Fact]
+    public void Noise_reduction_suppresses_steady_hiss()
+    {
+        var nr = new NoiseReductionEffect();
+        nr["amount"].Value = 30;
+        nr["strength"].Value = 100;
+        var rng = new Random(1);
+        var hiss = Enumerable.Range(0, Rate * 2).Select(_ => (float)(rng.NextDouble() - 0.5) * 0.02f).ToArray();
+        var before = Rms(hiss.AsSpan(hiss.Length / 2));
+        nr.Process(hiss, Rate, 2);
+        Assert.True(Rms(hiss.AsSpan(hiss.Length / 2)) < before * 0.3f);
+    }
+
+    [Fact]
+    public void Noise_reduction_keeps_a_tone_above_the_noise()
+    {
+        var nr = new NoiseReductionEffect();
+        nr["amount"].Value = 30;
+        nr["strength"].Value = 100;
+        var rng = new Random(2);
+        // 1 s of room hiss (what the denoiser learns), then a voice-like tone for 0.5 s on top of it.
+        var mix = Enumerable.Range(0, Rate * 3)
+            .Select(i => (i >= Rate * 2 ? 0.2f * MathF.Sin(2 * MathF.PI * 1000 * (i / 2) / Rate) : 0f) + (float)(rng.NextDouble() - 0.5) * 0.01f)
+            .ToArray();
+        nr.Process(mix, Rate, 2);
+        var db = 20 * MathF.Log10(Rms(mix.AsSpan(mix.Length - Rate / 2)) / (0.2f / MathF.Sqrt(2)));
+        Assert.InRange(db, -1.5f, 0.5f);
+    }
+
+    [Fact]
+    public void Auto_level_raises_quiet_speech_toward_target()
+    {
+        var lvl = new AutoLevelEffect();
+        lvl["target"].Value = -18;
+        lvl["maxgain"].Value = 12;
+        lvl["speed"].Value = 200;
+        var quiet = Enumerable.Range(0, Rate * 4).Select(i => 0.02f * MathF.Sin(i * 0.06f)).ToArray(); // ≈ -37 dB RMS
+        lvl.Process(quiet, Rate, 2);
+        var db = 20 * MathF.Log10(Rms(quiet.AsSpan(quiet.Length - 4800)));
+        Assert.InRange(db, -29, -23); // boosted by ~max gain (12 dB)
+    }
+
+    [Fact]
+    public void Mono_centres_a_one_sided_voice()
+    {
+        var mono = new MonoEffect();
+        float[] s = [1f, 0f, 1f, 0f];
+        mono.Process(s, Rate, 2);
+        Assert.Equal(s[0], s[1], 5);
+    }
+
+    [Fact]
+    public void Every_effect_survives_silence_and_full_scale()
+    {
+        foreach (var fx in new EffectChain().Effects)
+        {
+            fx.Enabled = true;
+            var s = Enumerable.Range(0, 9600).Select(i => i % 2400 < 1200 ? 0f : MathF.Sin(i * 0.1f)).ToArray();
+            fx.Process(s, Rate, 2);
+            Assert.All(s, v => Assert.True(float.IsFinite(v) && MathF.Abs(v) < 8, $"{fx.Name} produced {v}"));
+        }
+    }
+
+    private static float Rms(ReadOnlySpan<float> s)
+    {
+        double sum = 0;
+        foreach (var v in s) sum += v * v;
+        return (float)Math.Sqrt(sum / s.Length);
     }
 }
 

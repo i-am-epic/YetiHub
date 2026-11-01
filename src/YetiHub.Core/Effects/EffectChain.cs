@@ -10,13 +10,20 @@ public sealed class EffectChain : IAudioProcessor
 {
     public EffectChain()
     {
+        // Signal order: clean up → shape tone → control dynamics → colour → space → final level.
         Effects =
         [
+            new MonoEffect(),
             new LowCutEffect(),
+            new NoiseReductionEffect(),
             new NoiseGateEffect(),
             new VoiceEqEffect(),
             new DeEsserEffect(),
+            new AutoLevelEffect(),
             new CompressorEffect(),
+            new WarmthEffect(),
+            new ExciterEffect(),
+            new ReverbEffect(),
             new OutputGainEffect(),
             new LimiterEffect(),
         ];
@@ -27,6 +34,9 @@ public sealed class EffectChain : IAudioProcessor
     public IReadOnlyList<Effect> Effects { get; }
 
     public Effect this[string id] => Effects.First(e => e.Id == id);
+
+    /// <summary>Delay added by enabled look-ahead/block effects (e.g. noise reduction).</summary>
+    public double LatencyMs => Enabled ? Effects.Where(e => e.Enabled).Sum(e => e.LatencyMs) : 0;
 
     public void Process(Span<float> samples, int sampleRate, int channels)
     {

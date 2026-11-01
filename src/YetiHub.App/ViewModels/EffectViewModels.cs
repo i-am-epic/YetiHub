@@ -15,8 +15,14 @@ public sealed class EffectViewModel : Observable
         Parameters = effect.Parameters.Select(p => new ParameterViewModel(p, changed)).ToList();
     }
 
+    public string Id => _effect.Id;
     public string Name => _effect.Name;
     public string Description => _effect.Description;
+
+    /// <summary>"clean", "tone", "dynamics", "space": drives the card's colour.</summary>
+    public string Category => _effect.Category;
+
+    public string LatencyNote => _effect.LatencyMs > 0 ? $"+{_effect.LatencyMs:0.0} ms" : "";
     public IReadOnlyList<ParameterViewModel> Parameters { get; }
 
     public bool Enabled
@@ -72,14 +78,21 @@ public sealed class ParameterViewModel(EffectParameter parameter, Action changed
 public sealed class ProfileViewModel(Profile model, Action<ProfileViewModel> renamed) : Observable
 {
     public Profile Model { get; } = model;
+    public bool IsBuiltIn => Model.IsBuiltIn;
+    public string Group => IsBuiltIn ? "Standard" : "My profiles";
+    public string? Tagline => Model.Tagline;
 
     public string Name
     {
         get => Model.Name;
         set
         {
-            var name = string.IsNullOrWhiteSpace(value) ? Model.Name : value.Trim();
-            if (name == Model.Name) return;
+            var name = string.IsNullOrWhiteSpace(value) || IsBuiltIn ? Model.Name : value.Trim();
+            if (name == Model.Name)
+            {
+                Raise(); // snap the text box back
+                return;
+            }
             Model.Name = name;
             Raise();
             Raise(nameof(Initial));
@@ -93,8 +106,11 @@ public sealed class ProfileViewModel(Profile model, Action<ProfileViewModel> ren
     public bool IsActive { get => _isActive; set => Set(ref _isActive, value); }
 }
 
-public sealed record OutputOption(string? Id, string Name, bool IsVirtualCable)
+/// <param name="Unavailable">"unplugged" / "disabled", or null when the device can be used.</param>
+public sealed record OutputOption(string? Id, string Name, bool IsVirtualCable, string? Unavailable = null)
 {
     public static readonly OutputOption Off = new(null, "Off", false);
-    public override string ToString() => Name;
+    public bool IsAvailable => Unavailable is null;
+    public string Display => Unavailable is null ? Name : $"{Name}  ({Unavailable})";
+    public override string ToString() => Display;
 }

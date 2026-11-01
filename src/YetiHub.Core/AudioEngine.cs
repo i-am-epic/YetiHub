@@ -1,7 +1,5 @@
-using System.Runtime.InteropServices;
-using NAudio.CoreAudioApi;
-using NAudio.Wave;
 using YetiHub.Core.Effects;
+using YetiHub.Core.LowLatency;
 using YetiHub.Mods;
 
 namespace YetiHub.Core;
@@ -16,28 +14,21 @@ public enum OutputRole
 }
 
 /// <summary>
-/// Captures the Yeti, runs Voice FX and mod processors, and plays the result to up to two outputs.
-/// Tuned for latency: 10 ms capture packets, 20 ms output buffers, and a drift controller that stops the
-/// playback queue growing when the mic and output clocks disagree.
+/// Captures the Yeti, runs Voice FX and mod processors, and writes the result straight into up to two outputs,
+/// all on one Pro Audio thread. See <see cref="LowLatencyRender"/> for how the output delay is kept minimal.
 /// The Yeti's own headphone jack always carries the raw signal with zero latency; that is hardware.
 /// </summary>
 public sealed class AudioEngine : IDisposable
 {
-    public const int CaptureMs = 10;
-    public const int OutputMs = 20;
-    public const int QueueTargetMs = 10;
-
-    private static readonly Guid IeeeFloatSubFormat = new("00000003-0000-0010-8000-00aa00389b71");
-
     private readonly YetiDevice _device;
     private readonly List<IAudioProcessor> _processors = [];
-    private readonly Lock _processorsLock = new();
+    private readonly Lock _lock = new();
     private IAudioProcessor[] _processorSnapshot = [];
-    private readonly Dictionary<OutputRole, OutputSink> _sinks = [];
-    private OutputSink[] _sinkSnapshot = [];
+    private readonly Dictionary<OutputRole, LowLatencyRender> _outputs = [];
+    private LowLatencyRender[] _outputSnapshot = [];
 
-    private WasapiCapture? _capture;
-    private byte[] _scratch = [];
+    private LowLatencyCapture? _capture;
+    private float[] _work = [];
     private float _outputPeak;
 
     public AudioEngine(YetiDevice device, EffectChain effects)
@@ -53,68 +44,71 @@ public sealed class AudioEngine : IDisposable
     /// <summary>Peak after Voice FX and mods, 0..1.</summary>
     public float OutputPeak => Volatile.Read(ref _outputPeak);
 
-    /// <summary>Rough end-to-end delay of the processed signal, excluding the output device's own buffering.</summary>
-    public static int EstimatedLatencyMs => CaptureMs + QueueTargetMs + OutputMs;
+    public bool IsExclusive => _capture?.IsExclusive == true;
+    public double CapturePeriodMs => _capture?.PeriodMs ?? 0;
+    public string CaptureFormat => _capture?.Format.ToString() ?? "";
 
     public void AddProcessor(IAudioProcessor processor)
     {
-        lock (_processorsLock)
+        lock (_lock)
         {
             _processors.Add(processor);
             _processorSnapshot = _processors.ToArray();
         }
     }
 
-    public void Start()
+    /// <param name="exclusive">Open the Yeti exclusively at its minimum period. Falls back to shared if busy.</param>
+    public void Start(bool exclusive = false)
     {
         if (_capture != null)
             return;
-
-        _capture = new WasapiCapture(_device.Capture, useEventSync: true, audioBufferMillisecondsLength: CaptureMs);
-        _capture.DataAvailable += OnDataAvailable;
-        _capture.RecordingStopped += (_, e) => { if (e.Exception != null) Error?.Invoke(this, e.Exception.Message); };
-        _capture.StartRecording();
+        _capture = new LowLatencyCapture(_device.Capture.ID, exclusive);
+        _capture.DataAvailable += OnData;
+        _capture.Failed += ex => Error?.Invoke(this, "Capture stopped: " + ex.Message);
+        _capture.Start();
     }
 
-    /// <summary>Routes processed audio to <paramref name="output"/>, or stops that route when null.</summary>
-    public void SetOutput(OutputRole role, MMDevice? output)
+    /// <summary>Routes processed audio to the device with <paramref name="deviceId"/>, or stops that route when null.</summary>
+    public void SetOutput(OutputRole role, string? deviceId)
     {
-        Start();
-        if (_sinks.Remove(role, out var old))
-        {
-            _sinkSnapshot = _sinks.Values.ToArray();
-            old.Dispose();
-        }
-        if (output is null || _capture is null)
-            return;
+        if (_capture is null)
+            throw new InvalidOperationException("Start the engine first.");
 
-        _sinks[role] = new OutputSink(output, _capture.WaveFormat);
-        _sinkSnapshot = _sinks.Values.ToArray();
+        LowLatencyRender? old;
+        lock (_lock)
+        {
+            _outputs.Remove(role, out old);
+            if (deviceId != null)
+                _outputs[role] = new LowLatencyRender(deviceId, _capture.Format);
+            _outputSnapshot = _outputs.Values.ToArray();
+        }
+        // The audio thread may still be inside Write on the old output for one packet.
+        if (old != null)
+            Task.Delay(100).ContinueWith(_ => old.Dispose());
     }
 
-    public bool IsRouted(OutputRole role) => _sinks.ContainsKey(role);
-
-    private void OnDataAvailable(object? sender, WaveInEventArgs e)
+    /// <summary>
+    /// Measured mic-to-speaker delay for a route: capture packet + processing + audio queued in the output + Windows
+    /// engine/driver latency. Null when the route is off.
+    /// </summary>
+    public double? LatencyMs(OutputRole role)
     {
-        var format = _capture!.WaveFormat;
-        var isFloat = format.Encoding == WaveFormatEncoding.IeeeFloat ||
-                      (format is WaveFormatExtensible ext && ext.SubFormat == IeeeFloatSubFormat);
-        var sinks = _sinkSnapshot;
-
-        if (!isFloat || format.BitsPerSample != 32)
+        lock (_lock)
         {
-            // Shared-mode capture is float on every Windows build we know of; pass anything else through untouched.
-            foreach (var sink in sinks) sink.Write(e.Buffer, e.BytesRecorded);
-            return;
+            if (!_outputs.TryGetValue(role, out var o)) return null;
+            return CapturePeriodMs + Effects.LatencyMs + o.QueuedMs + o.EngineLatencyMs;
         }
+    }
 
-        var raw = MemoryMarshal.Cast<byte, float>(e.Buffer.AsSpan(0, e.BytesRecorded));
-        _device.ReportPeak(Dsp.Peak(raw));
+    private void OnData(Span<float> samples)
+    {
+        var format = _capture!.Format;
+        _device.ReportPeak(Dsp.Peak(samples));
 
-        if (_scratch.Length < e.BytesRecorded)
-            _scratch = new byte[e.BytesRecorded];
-        Buffer.BlockCopy(e.Buffer, 0, _scratch, 0, e.BytesRecorded);
-        var work = MemoryMarshal.Cast<byte, float>(_scratch.AsSpan(0, e.BytesRecorded));
+        if (_work.Length < samples.Length)
+            _work = new float[samples.Length * 2];
+        var work = _work.AsSpan(0, samples.Length);
+        samples.CopyTo(work);
 
         if (Effects.Enabled)
             Run(Effects, work, format);
@@ -125,11 +119,14 @@ public sealed class AudioEngine : IDisposable
         }
 
         Volatile.Write(ref _outputPeak, Dsp.Peak(work));
-        foreach (var sink in sinks)
-            sink.Write(_scratch, e.BytesRecorded);
+        foreach (var output in _outputSnapshot)
+        {
+            try { output.Write(work); }
+            catch (Exception ex) { Error?.Invoke(this, "Output error: " + ex.Message); }
+        }
     }
 
-    private void Run(IAudioProcessor processor, Span<float> work, WaveFormat format)
+    private void Run(IAudioProcessor processor, Span<float> work, StreamFormat format)
     {
         try
         {
@@ -144,64 +141,13 @@ public sealed class AudioEngine : IDisposable
 
     public void Dispose()
     {
-        foreach (var sink in _sinks.Values)
-            sink.Dispose();
-        _sinks.Clear();
-        _sinkSnapshot = [];
-
-        if (_capture != null)
+        _capture?.Dispose();
+        _capture = null;
+        lock (_lock)
         {
-            _capture.DataAvailable -= OnDataAvailable;
-            _capture.StopRecording();
-            _capture.Dispose();
-            _capture = null;
-        }
-    }
-
-    private sealed class OutputSink : IDisposable
-    {
-        private readonly BufferedWaveProvider _queue;
-        private readonly WasapiOut _out;
-        private readonly int _targetBytes;
-        private readonly int _maxBytes;
-        private readonly byte[] _discard;
-
-        public OutputSink(MMDevice device, WaveFormat format)
-        {
-            _queue = new BufferedWaveProvider(format)
-            {
-                BufferDuration = TimeSpan.FromMilliseconds(250),
-                DiscardOnBufferOverflow = true,
-            };
-            _targetBytes = Align(format.AverageBytesPerSecond * QueueTargetMs / 1000, format.BlockAlign);
-            _maxBytes = Align(format.AverageBytesPerSecond * (QueueTargetMs + 2 * CaptureMs) / 1000, format.BlockAlign);
-            _discard = new byte[format.AverageBytesPerSecond / 4];
-
-            _out = new WasapiOut(device, AudioClientShareMode.Shared, useEventSync: true, latency: OutputMs);
-            _out.Init(_queue);
-            _out.Play();
-        }
-
-        public void Write(byte[] data, int count)
-        {
-            _queue.AddSamples(data, 0, count);
-
-            // Drift control: if playback falls behind capture, drop the oldest audio back down to the target
-            // instead of letting delay pile up.
-            var excess = _queue.BufferedBytes - _maxBytes;
-            if (excess > 0)
-            {
-                var drop = Align(_queue.BufferedBytes - _targetBytes, _queue.WaveFormat.BlockAlign);
-                _queue.Read(_discard, 0, Math.Min(drop, _discard.Length));
-            }
-        }
-
-        private static int Align(int bytes, int blockAlign) => bytes / blockAlign * blockAlign;
-
-        public void Dispose()
-        {
-            _out.Stop();
-            _out.Dispose();
+            foreach (var o in _outputs.Values) o.Dispose();
+            _outputs.Clear();
+            _outputSnapshot = [];
         }
     }
 }

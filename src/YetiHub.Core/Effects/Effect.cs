@@ -46,6 +46,8 @@ public sealed class EffectParameter
         "Hz" when _value >= 1000 => $"{_value / 1000:0.0} kHz",
         "Hz" => $"{_value:0} Hz",
         "dB" => $"{_value:+0.0;-0.0;0.0} dB",
+        "-dB" => _value == 0 ? "0.0 dB" : $"-{_value:0.0} dB", // amounts of reduction, stored positive
+
         "ms" => $"{_value:0} ms",
         ":1" => $"{_value:0.0}:1",
         _ => _value.ToString("0.##", CultureInfo.CurrentCulture) + " " + Unit,
@@ -73,6 +75,12 @@ public abstract class Effect
     public string Description { get; }
     public bool Enabled { get; set; }
     public IReadOnlyList<EffectParameter> Parameters => _parameters;
+
+    /// <summary>Algorithmic delay this effect adds, in ms (0 for sample-by-sample effects).</summary>
+    public virtual double LatencyMs => 0;
+
+    /// <summary>Short UI category used for colour coding: "clean", "tone", "dynamics", "space", "fun".</summary>
+    public virtual string Category => "tone";
 
     protected int SampleRate { get; private set; }
     protected int Channels { get; private set; }

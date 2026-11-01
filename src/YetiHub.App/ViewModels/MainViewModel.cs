@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
+using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Threading;
 using NAudio.CoreAudioApi;
@@ -33,6 +35,7 @@ public sealed class MainViewModel : Observable, IDisposable
     private bool _scanning = true;
     private bool _routingOutputs;
     private TimeSpan _lastFrame;
+    private TimeSpan _lastStats;
 
     public MainViewModel()
     {
@@ -41,17 +44,20 @@ public sealed class MainViewModel : Observable, IDisposable
 
         Effects = _effects.Effects.Select(e => new EffectViewModel(e, OnSoundChanged)).ToList();
 
+        ProfilesView = CollectionViewSource.GetDefaultView(Profiles);
+        ProfilesView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(ProfileViewModel.Group)));
+
         RescanCommand = new RelayCommand(RescanAsync);
         MakeDefaultCommand = new RelayCommand(MakeDefault, () => _device != null && !IsDefault);
-        ToggleMuteCommand = new RelayCommand(() => IsMuted = !IsMuted, () => _device != null);
         OpenModsFolderCommand = new RelayCommand(OpenModsFolder);
         OpenProfilesFolderCommand = new RelayCommand(() => OpenFolder(_profileStore.Directory));
         CheckUpdatesCommand = new RelayCommand(CheckForUpdatesAsync, () => _updates.IsInstalled);
         InstallUpdateCommand = new RelayCommand(InstallUpdateAsync, () => _pendingUpdate != null);
-        NewProfileCommand = new RelayCommand(() => AddProfile(CaptureCurrent("New profile")));
-        DuplicateProfileCommand = new RelayCommand(() => AddProfile(ActiveProfile!.Model.Clone(ActiveProfile.Name + " copy")), () => ActiveProfile != null);
-        DeleteProfileCommand = new RelayCommand(DeleteActiveProfile, () => Profiles.Count > 1);
+        NewProfileCommand = new RelayCommand(() => AddProfile(CaptureCurrent(UniqueName("My profile"))));
+        DuplicateProfileCommand = new RelayCommand(DuplicateActive, () => ActiveProfile != null);
+        DeleteProfileCommand = new RelayCommand(DeleteActiveProfile, () => ActiveProfile is { IsBuiltIn: false });
         GetVirtualCableCommand = new RelayCommand(() => Process.Start(new ProcessStartInfo("https://vb-audio.com/Cable/") { UseShellExecute = true }));
+        OpenSoundSettingsCommand = new RelayCommand(() => Process.Start(new ProcessStartInfo("ms-settings:sound") { UseShellExecute = true }));
 
         _scanner.DevicesChanged += (_, _) => _ui.InvokeAsync(RescanAsync);
         _mods.Logged += (_, line) => _ui.InvokeAsync(() => Log(line));
@@ -68,7 +74,7 @@ public sealed class MainViewModel : Observable, IDisposable
         : "Connected · " + _device.EndpointName;
     public string UsbIds => _device is null ? "—" : $"VID {_device.Usb.VendorId:X4} · PID {_device.Usb.ProductId:X4}";
     public string Firmware => _device?.Usb.FirmwareRevision ?? "—";
-    public string Format => _device?.CaptureFormat?.Replace("WAVE_FORMAT_EXTENSIBLE ", "") ?? "—";
+    public string Format => _engine?.CaptureFormat is { Length: > 0 } f ? f : "—";
     public ObservableCollection<DriverInfo> Drivers { get; } = [];
     public bool IsDefault => _device?.IsDefaultFor(Role.Communications) == true && _device.IsDefaultFor(Role.Console);
 
@@ -115,17 +121,46 @@ public sealed class MainViewModel : Observable, IDisposable
     }
 
     // ---------------- meters (updated every frame) ----------------
-    private double _inputLevel, _inputPeak, _outputLevel, _outputPeak, _peakHoldIn, _peakHoldOut;
+    private double _inputLevel, _inputPeak, _outputLevel, _outputPeak, _peakHoldIn, _peakHoldOut, _glow;
     public double InputLevel { get => _inputLevel; private set => Set(ref _inputLevel, value); }
     public double InputPeak { get => _inputPeak; private set => Set(ref _inputPeak, value); }
     public double OutputLevel { get => _outputLevel; private set => Set(ref _outputLevel, value); }
     public double OutputPeak { get => _outputPeak; private set => Set(ref _outputPeak, value); }
+
+    /// <summary>0..1, follows the voice: drives the hero glow.</summary>
+    public double Glow { get => _glow; private set => Set(ref _glow, value); }
 
     private string _inputDb = "-∞";
     public string InputDb { get => _inputDb; private set => Set(ref _inputDb, value); }
 
     private string _compression = "";
     public string Compression { get => _compression; private set => Set(ref _compression, value); }
+
+    // ---------------- latency ----------------
+    private string _latencyText = "—";
+    /// <summary>Measured mic-to-ear delay of the monitor (or virtual mic) route.</summary>
+    public string LatencyText { get => _latencyText; private set => Set(ref _latencyText, value); }
+
+    private string _latencyGrade = "off";
+    /// <summary>"great" / "good" / "high" / "off": colours the badge.</summary>
+    public string LatencyGrade { get => _latencyGrade; private set => Set(ref _latencyGrade, value); }
+
+    public string EngineInfo => _engine is null
+        ? "Not running"
+        : $"{(_engine.IsExclusive ? "Exclusive" : "Shared · raw")} · {_engine.CapturePeriodMs:0.#} ms packets · {_engine.CaptureFormat}";
+
+    public bool UltraLowLatency
+    {
+        get => _settings.UltraLowLatency;
+        set
+        {
+            if (_settings.UltraLowLatency == value) return;
+            _settings.UltraLowLatency = value;
+            _settings.Save();
+            Raise();
+            RestartEngine();
+        }
+    }
 
     // ---------------- Voice FX ----------------
     public IReadOnlyList<EffectViewModel> Effects { get; }
@@ -152,10 +187,11 @@ public sealed class MainViewModel : Observable, IDisposable
         get => _monitorOutput;
         set
         {
-            if (!Set(ref _monitorOutput, value ?? OutputOption.Off) || _routingOutputs) return;
-            _settings.MonitorDeviceId = _monitorOutput.Id;
+            value ??= OutputOption.Off;
+            if (!value.IsAvailable || !Set(ref _monitorOutput, value) || _routingOutputs) return;
+            _settings.MonitorDeviceId = value.Id;
             _settings.Save();
-            Route(OutputRole.Monitor, _monitorOutput);
+            Route(OutputRole.Monitor, value);
         }
     }
 
@@ -165,18 +201,20 @@ public sealed class MainViewModel : Observable, IDisposable
         get => _virtualMicOutput;
         set
         {
-            if (!Set(ref _virtualMicOutput, value ?? OutputOption.Off) || _routingOutputs) return;
-            _settings.VirtualMicDeviceId = _virtualMicOutput.Id;
+            value ??= OutputOption.Off;
+            if (!value.IsAvailable || !Set(ref _virtualMicOutput, value) || _routingOutputs) return;
+            _settings.VirtualMicDeviceId = value.Id;
             _settings.Save();
-            Route(OutputRole.VirtualMic, _virtualMicOutput);
+            Route(OutputRole.VirtualMic, value);
         }
     }
 
-    public bool HasVirtualCable => VirtualMicOutputs.Any(o => o.IsVirtualCable);
-    public string LatencyText => $"≈ {AudioEngine.EstimatedLatencyMs} ms processing delay";
+    public bool HasVirtualCable => VirtualMicOutputs.Any(o => o.IsVirtualCable && o.IsAvailable);
+    public bool HasUnpluggedOutputs => MonitorOutputs.Any(o => o.Unavailable == "unplugged");
 
     // ---------------- profiles ----------------
     public ObservableCollection<ProfileViewModel> Profiles { get; } = [];
+    public ICollectionView ProfilesView { get; }
 
     private ProfileViewModel? _activeProfile;
     public ProfileViewModel? ActiveProfile
@@ -190,11 +228,17 @@ public sealed class MainViewModel : Observable, IDisposable
             _activeProfile = value;
             _activeProfile.IsActive = true;
             Raise();
+            Raise(nameof(IsLocked));
+            Raise(nameof(CanEditFx));
             ApplyProfile(value);
             _settings.ActiveProfileId = value.Model.Id;
             _settings.Save();
         }
     }
+
+    /// <summary>Standard profiles can't be changed; the Voice FX page shows a "duplicate to customise" bar.</summary>
+    public bool IsLocked => _activeProfile?.IsBuiltIn == true;
+    public bool CanEditFx => !IsLocked;
 
     // ---------------- mods ----------------
     public ObservableCollection<ModRow> Mods { get; } = [];
@@ -213,7 +257,6 @@ public sealed class MainViewModel : Observable, IDisposable
 
     public RelayCommand RescanCommand { get; }
     public RelayCommand MakeDefaultCommand { get; }
-    public RelayCommand ToggleMuteCommand { get; }
     public RelayCommand OpenModsFolderCommand { get; }
     public RelayCommand OpenProfilesFolderCommand { get; }
     public RelayCommand CheckUpdatesCommand { get; }
@@ -222,6 +265,7 @@ public sealed class MainViewModel : Observable, IDisposable
     public RelayCommand DuplicateProfileCommand { get; }
     public RelayCommand DeleteProfileCommand { get; }
     public RelayCommand GetVirtualCableCommand { get; }
+    public RelayCommand OpenSoundSettingsCommand { get; }
 
     public async Task InitializeAsync()
     {
@@ -239,12 +283,17 @@ public sealed class MainViewModel : Observable, IDisposable
     // ---------------- profiles ----------------
     private void LoadProfiles()
     {
-        foreach (var p in _profileStore.LoadAll().OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase))
+        foreach (var p in Presets.All)
+            Profiles.Add(new ProfileViewModel(p, Renamed));
+        foreach (var p in _profileStore.LoadUserProfiles().OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase))
             Profiles.Add(new ProfileViewModel(p, Renamed));
         ActiveProfile = Profiles.FirstOrDefault(p => p.Model.Id == _settings.ActiveProfileId) ?? Profiles[0];
     }
 
-    private void Renamed(ProfileViewModel p) => _profileStore.Save(p.Model);
+    private void Renamed(ProfileViewModel p)
+    {
+        if (!p.IsBuiltIn) _profileStore.Save(p.Model);
+    }
 
     private void ApplyProfile(ProfileViewModel p)
     {
@@ -258,7 +307,7 @@ public sealed class MainViewModel : Observable, IDisposable
 
             if (_device != null)
             {
-                Gain = p.Model.Gain * 100;
+                if (p.Model.Gain is { } g) Gain = g * 100;
                 if (p.Model.HeadphoneVolume is { } hp) HeadphoneVolume = hp * 100;
             }
         }
@@ -269,7 +318,7 @@ public sealed class MainViewModel : Observable, IDisposable
     private Profile CaptureCurrent(string name) => new()
     {
         Name = name,
-        Gain = (float)(_gain / 100),
+        Gain = _device is null ? null : (float)(_gain / 100),
         HeadphoneVolume = HasHeadphones ? (float)(_headphoneVolume / 100) : null,
         EffectsEnabled = _effects.Enabled,
         Effects = _effects.CaptureState(),
@@ -278,7 +327,7 @@ public sealed class MainViewModel : Observable, IDisposable
     /// <summary>Any user change to the sound: copy it into the active profile and save shortly after.</summary>
     private void OnSoundChanged()
     {
-        if (_applyingProfile || _syncingFromDevice || _activeProfile is null) return;
+        if (_applyingProfile || _syncingFromDevice || _activeProfile is null || _activeProfile.IsBuiltIn) return;
         var m = _activeProfile.Model;
         if (_device != null)
         {
@@ -294,7 +343,24 @@ public sealed class MainViewModel : Observable, IDisposable
     private void SaveActiveProfile()
     {
         _saveTimer.Stop();
-        if (_activeProfile != null) _profileStore.Save(_activeProfile.Model);
+        if (_activeProfile is { IsBuiltIn: false }) _profileStore.Save(_activeProfile.Model);
+    }
+
+    private void DuplicateActive()
+    {
+        if (_activeProfile is null) return;
+        var copy = _activeProfile.Model.Clone(UniqueName(_activeProfile.Name + (_activeProfile.IsBuiltIn ? " (custom)" : " copy")));
+        // A copy of a standard profile also remembers your current gain, so it's a full snapshot of your setup.
+        if (_activeProfile.IsBuiltIn && _device != null) copy.Gain = (float)(_gain / 100);
+        AddProfile(copy);
+    }
+
+    private string UniqueName(string name)
+    {
+        var candidate = name;
+        for (var i = 2; Profiles.Any(p => p.Name.Equals(candidate, StringComparison.CurrentCultureIgnoreCase)); i++)
+            candidate = $"{name} {i}";
+        return candidate;
     }
 
     private void AddProfile(Profile profile)
@@ -303,18 +369,17 @@ public sealed class MainViewModel : Observable, IDisposable
         var vm = new ProfileViewModel(profile, Renamed);
         Profiles.Add(vm);
         ActiveProfile = vm;
+        Log($"Profile \"{profile.Name}\" created");
     }
 
     private void DeleteActiveProfile()
     {
-        if (_activeProfile is null || Profiles.Count <= 1) return;
-        var doomed = _activeProfile;
-        var index = Profiles.IndexOf(doomed);
+        if (_activeProfile is not { IsBuiltIn: false } doomed) return;
         _saveTimer.Stop();
         _activeProfile = null;
         Profiles.Remove(doomed);
         _profileStore.Delete(doomed.Model);
-        ActiveProfile = Profiles[Math.Min(index, Profiles.Count - 1)];
+        ActiveProfile = Profiles.LastOrDefault(p => !p.IsBuiltIn) ?? Profiles[0];
         Log($"Profile \"{doomed.Name}\" deleted");
     }
 
@@ -384,12 +449,24 @@ public sealed class MainViewModel : Observable, IDisposable
         foreach (var d in found.Usb.Drivers)
             Drivers.Add(d);
 
-        _engine = new AudioEngine(found, _effects);
+        StartEngine();
+        if (_activeProfile != null) ApplyProfile(_activeProfile);
+        SyncFromDevice();
+        RaiseDevice();
+    }
+
+    private void StartEngine()
+    {
+        if (_device is null) return;
+        _engine = new AudioEngine(_device, _effects);
         _engine.Error += (_, msg) => _ui.InvokeAsync(() => Log(msg));
-        _mods.Attach(found, _engine);
+        _mods.Attach(_device, _engine);
         try
         {
-            _engine.Start();
+            _engine.Start(_settings.UltraLowLatency);
+            if (_settings.UltraLowLatency && !_engine.IsExclusive)
+                Log("Ultra-low latency unavailable (another app is using the Yeti); using shared mode.");
+            Log($"Audio engine: {EngineInfo}");
             Route(OutputRole.Monitor, _monitorOutput);
             Route(OutputRole.VirtualMic, _virtualMicOutput);
         }
@@ -397,10 +474,16 @@ public sealed class MainViewModel : Observable, IDisposable
         {
             Log($"Could not open the mic: {ex.Message}. Check Settings > Privacy > Microphone.");
         }
+        Raise(nameof(EngineInfo));
+        Raise(nameof(Format));
+    }
 
-        if (_activeProfile != null) ApplyProfile(_activeProfile);
-        SyncFromDevice();
-        RaiseDevice();
+    private void RestartEngine()
+    {
+        _mods.Attach(null, null);
+        _engine?.Dispose();
+        _engine = null;
+        StartEngine();
     }
 
     private void RefreshOutputs()
@@ -413,17 +496,22 @@ public sealed class MainViewModel : Observable, IDisposable
             VirtualMicOutputs.Clear();
             MonitorOutputs.Add(OutputOption.Off);
             VirtualMicOutputs.Add(OutputOption.Off);
-            foreach (var o in outputs.OrderByDescending(o => o.IsVirtualCable).ThenBy(o => o.Name))
+            foreach (var o in outputs.OrderBy(o => !o.IsAvailable).ThenByDescending(o => o.IsVirtualCable).ThenBy(o => o.Name))
             {
-                var option = new OutputOption(o.Id, o.Name, o.IsVirtualCable);
-                if (!o.IsVirtualCable) MonitorOutputs.Add(option);
-                VirtualMicOutputs.Add(option);
+                var option = new OutputOption(o.Id, o.Name, o.IsVirtualCable, o.Unavailable);
+                // Speakers go to "hear yourself"; only virtual cables can act as a mic for other apps.
+                // (Allowing both on one device would play your voice twice.)
+                if (o.IsVirtualCable) VirtualMicOutputs.Add(option);
+                else MonitorOutputs.Add(option);
             }
-            MonitorOutput = MonitorOutputs.FirstOrDefault(o => o.Id == _settings.MonitorDeviceId) ?? OutputOption.Off;
-            VirtualMicOutput = VirtualMicOutputs.FirstOrDefault(o => o.Id == _settings.VirtualMicDeviceId) ?? OutputOption.Off;
+            _monitorOutput = MonitorOutputs.FirstOrDefault(o => o.Id == _settings.MonitorDeviceId && o.IsAvailable) ?? OutputOption.Off;
+            _virtualMicOutput = VirtualMicOutputs.FirstOrDefault(o => o.Id == _settings.VirtualMicDeviceId && o.IsAvailable) ?? OutputOption.Off;
+            Raise(nameof(MonitorOutput));
+            Raise(nameof(VirtualMicOutput));
         }
         finally { _routingOutputs = false; }
         Raise(nameof(HasVirtualCable));
+        Raise(nameof(HasUnpluggedOutputs));
     }
 
     private void Route(OutputRole role, OutputOption option)
@@ -431,7 +519,7 @@ public sealed class MainViewModel : Observable, IDisposable
         if (_engine is null) return;
         try
         {
-            _engine.SetOutput(role, option.Id is null ? null : _scanner.GetDevice(option.Id));
+            _engine.SetOutput(role, option.Id);
             if (option.Id != null) Log($"{(role == OutputRole.Monitor ? "Monitoring" : "Virtual mic")} → {option.Name}");
         }
         catch (Exception ex)
@@ -448,6 +536,7 @@ public sealed class MainViewModel : Observable, IDisposable
         _device?.Dispose();
         _device = null;
         Drivers.Clear();
+        Raise(nameof(EngineInfo));
     }
 
     private void SyncFromDevice()
@@ -467,7 +556,7 @@ public sealed class MainViewModel : Observable, IDisposable
     private void RaiseDevice()
     {
         foreach (var p in new[] { nameof(IsConnected), nameof(IsScanning), nameof(DeviceTitle), nameof(DeviceStatus), nameof(UsbIds),
-                     nameof(Firmware), nameof(Format), nameof(IsDefault), nameof(HasHeadphones), nameof(GainLabel) })
+                     nameof(Firmware), nameof(Format), nameof(IsDefault), nameof(HasHeadphones), nameof(GainLabel), nameof(EngineInfo) })
             Raise(p);
     }
 
@@ -490,12 +579,21 @@ public sealed class MainViewModel : Observable, IDisposable
         _peakHoldOut = Math.Max(OutputLevel, _peakHoldOut * holdDecay);
         InputPeak = _peakHoldIn;
         OutputPeak = _peakHoldOut;
+        Glow = Controls.LevelMeter.ToPosition(InputLevel);
 
         var db = Dsp.ToDecibels((float)InputLevel);
         InputDb = _device is null || db < -60 ? "-∞" : $"{db:0}";
 
+        // Text stats don't need 60 fps.
+        if (now - _lastStats < TimeSpan.FromMilliseconds(250)) return;
+        _lastStats = now;
+
         var comp = (CompressorEffect)_effects["compressor"];
         Compression = comp.Enabled && _effects.Enabled && comp.GainReductionDb < -0.5 ? $"-{-comp.GainReductionDb:0.0} dB" : "";
+
+        var latency = _engine?.LatencyMs(OutputRole.Monitor) ?? _engine?.LatencyMs(OutputRole.VirtualMic);
+        LatencyText = latency is { } ms ? $"{ms:0} ms" : "off";
+        LatencyGrade = latency switch { null => "off", < 25 => "great", < 40 => "good", _ => "high" };
     }
 
     private void MakeDefault()

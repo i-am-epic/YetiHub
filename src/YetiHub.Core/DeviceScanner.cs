@@ -3,7 +3,11 @@ using NAudio.CoreAudioApi.Interfaces;
 
 namespace YetiHub.Core;
 
-public sealed record OutputDeviceInfo(string Id, string Name, bool IsVirtualCable);
+/// <param name="Unavailable">Why Windows won't play to it ("unplugged", "disabled"), or null when active.</param>
+public sealed record OutputDeviceInfo(string Id, string Name, bool IsVirtualCable, string? Unavailable)
+{
+    public bool IsAvailable => Unavailable is null;
+}
 
 /// <summary>
 /// Finds the Yeti and tells listeners when audio devices are plugged, unplugged, or change default.
@@ -23,7 +27,7 @@ public sealed class DeviceScanner : IMMNotificationClient, IDisposable
     /// <summary>Raised on a thread-pool thread.</summary>
     public event EventHandler? DevicesChanged;
 
-    /// <param name="usbDevices">Result of <see cref="UsbProbe.FindBlueDevices"/>, which is slow (WMI); run it off the UI thread.</param>
+    /// <param name="usbDevices">Result of <see cref="UsbProbe.FindBlueDevices"/>.</param>
     public YetiDevice? FindYeti(IEnumerable<UsbDeviceInfo> usbDevices)
     {
         foreach (var usb in usbDevices)
@@ -36,22 +40,29 @@ public sealed class DeviceScanner : IMMNotificationClient, IDisposable
         return null;
     }
 
-    /// <summary>Active playback devices, for the monitor and virtual-mic pickers.</summary>
+    /// <summary>
+    /// Playback devices for the monitor and virtual-mic pickers. Unplugged and disabled ones are included (but not
+    /// <see cref="OutputDeviceInfo.IsAvailable"/>) so users can see e.g. Realtek speakers whose jack isn't detected.
+    /// </summary>
     public IReadOnlyList<OutputDeviceInfo> ListOutputs()
     {
         var list = new List<OutputDeviceInfo>();
-        foreach (var d in _enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active))
+        foreach (var d in _enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active | DeviceState.Unplugged | DeviceState.Disabled))
         {
             using (d)
-                list.Add(new OutputDeviceInfo(d.ID, d.FriendlyName, IsVirtualCable(d.FriendlyName)));
+            {
+                string name;
+                try { name = d.FriendlyName; }
+                catch (System.Runtime.InteropServices.COMException) { continue; }
+                list.Add(new OutputDeviceInfo(d.ID, name, IsVirtualCable(name), d.State switch
+                {
+                    DeviceState.Active => null,
+                    DeviceState.Unplugged => "unplugged",
+                    _ => "disabled",
+                }));
+            }
         }
         return list;
-    }
-
-    public MMDevice? GetDevice(string id)
-    {
-        try { return _enumerator.GetDevice(id); }
-        catch (System.Runtime.InteropServices.COMException) { return null; }
     }
 
     /// <summary>Virtual audio cables whose playback side shows up to apps as a microphone.</summary>

@@ -16,6 +16,9 @@ public sealed class AppSettings
     public string? MonitorDeviceId { get; set; }
     public string? VirtualMicDeviceId { get; set; }
 
+    /// <summary>Open the Yeti in exclusive mode (3 ms packets). Other apps then need the virtual mic.</summary>
+    public bool UltraLowLatency { get; set; }
+
     /// <summary>Mod processor on/off by name; mods not listed keep their own default.</summary>
     public Dictionary<string, bool> ProcessorStates { get; set; } = [];
 

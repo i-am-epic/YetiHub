@@ -2,15 +2,17 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:c="clr-namespace:YetiHub.App.Controls"
-        Title="YetiHub" Width="1280" Height="820" MinWidth="980" MinHeight="640"
+        Title="YetiHub" Width="1320" Height="860" MinWidth="1000" MinHeight="660"
         Background="{StaticResource Bg}" WindowStartupLocation="CenterScreen"
         UseLayoutRounding="True" TextOptions.TextFormattingMode="Display"
         Foreground="{StaticResource Text}" FontFamily="{StaticResource Body}" FontSize="13">
   <WindowChrome.WindowChrome>
-    <WindowChrome CaptionHeight="40" ResizeBorderThickness="6" GlassFrameThickness="0,0,0,1" CornerRadius="0" UseAeroCaptionButtons="False" />
+    <WindowChrome CaptionHeight="44" ResizeBorderThickness="6" GlassFrameThickness="0,0,0,1" CornerRadius="0" UseAeroCaptionButtons="False" />
   </WindowChrome.WindowChrome>
 
   <Window.Resources>
+    <FontFamily x:Key="Icons">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+
     <!-- Grille texture for the mic illustration -->
     <DrawingBrush x:Key="Grille" TileMode="Tile" Viewport="0,0,5,5" ViewportUnits="Absolute" Stretch="None">
       <DrawingBrush.Drawing>
@@ -29,10 +31,31 @@
       </DrawingBrush.Drawing>
     </DrawingBrush>
 
+    <!-- Effect category colours -->
+    <SolidColorBrush x:Key="CatClean" Color="#2EE6A6" />
+    <SolidColorBrush x:Key="CatTone" Color="#00B8FC" />
+    <SolidColorBrush x:Key="CatDynamics" Color="#9B7BFF" />
+    <SolidColorBrush x:Key="CatSpace" Color="#FF7AC6" />
+
+    <Style x:Key="CategoryBrush" TargetType="Border">
+      <Setter Property="Background" Value="{StaticResource CatTone}" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding Category}" Value="clean">
+          <Setter Property="Background" Value="{StaticResource CatClean}" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Category}" Value="dynamics">
+          <Setter Property="Background" Value="{StaticResource CatDynamics}" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Category}" Value="space">
+          <Setter Property="Background" Value="{StaticResource CatSpace}" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
     <!-- Labeled knob used by effect cards -->
     <DataTemplate x:Key="ParamKnob">
-      <StackPanel Width="78" Margin="0,0,8,0">
-        <c:Knob Width="58" Height="58" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" DefaultValue="{Binding Default}"
+      <StackPanel Width="78" Margin="0,0,6,4">
+        <c:Knob Width="56" Height="56" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" DefaultValue="{Binding Default}"
                 Bipolar="{Binding Bipolar}" Value="{Binding Value}" />
         <TextBlock Text="{Binding Display}" HorizontalAlignment="Center" FontSize="12" FontWeight="SemiBold" Margin="0,6,0,0" />
         <TextBlock Text="{Binding Name}" Style="{StaticResource Label}" FontSize="11" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
@@ -46,7 +69,7 @@
           <ControlTemplate TargetType="ToggleButton">
             <Grid Width="56" Height="56">
               <Ellipse x:Name="bg" Fill="#202530" />
-              <TextBlock Text="&#xE720;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center" />
+              <TextBlock Text="&#xE720;" FontFamily="{StaticResource Icons}" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center" />
               <Line x:Name="slash" X1="18" Y1="38" X2="38" Y2="18" Stroke="White" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Visibility="Collapsed" />
             </Grid>
             <ControlTemplate.Triggers>
@@ -62,50 +85,107 @@
         </Setter.Value>
       </Setter>
     </Style>
+
+    <!-- Signal-chain pill: lit when the stage is on -->
+    <Style x:Key="ChainPill" TargetType="ToggleButton">
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ToggleButton">
+            <Border x:Name="pill" CornerRadius="14" Padding="12,6" BorderThickness="1" BorderBrush="#2A303B" Background="#161A21">
+              <StackPanel Orientation="Horizontal">
+                <Border x:Name="dot" Width="7" Height="7" CornerRadius="3.5" Margin="0,0,8,0" Style="{StaticResource CategoryBrush}" Opacity="0.25" />
+                <ContentPresenter VerticalAlignment="Center" />
+              </StackPanel>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="dot" Property="Opacity" Value="1" />
+                <Setter TargetName="pill" Property="Background" Value="#1A2230" />
+                <Setter TargetName="pill" Property="BorderBrush" Value="#2C4A66" />
+              </Trigger>
+              <Trigger Property="IsChecked" Value="False">
+                <Setter Property="Foreground" Value="{StaticResource Dim}" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Cursor" Value="Arrow" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="OutputCombo" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+      <Setter Property="DisplayMemberPath" Value="Display" />
+      <Setter Property="ItemContainerStyle">
+        <Setter.Value>
+          <Style TargetType="ComboBoxItem" BasedOn="{StaticResource {x:Type ComboBoxItem}}">
+            <Setter Property="IsEnabled" Value="{Binding IsAvailable}" />
+            <Style.Triggers>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{StaticResource Dim}" />
+                <Setter Property="ToolTip" Value="Windows reports this device as unavailable. For Realtek: plug speakers into the rear green jack, or turn off jack detection in Realtek Audio Console." />
+              </Trigger>
+            </Style.Triggers>
+          </Style>
+        </Setter.Value>
+      </Setter>
+    </Style>
   </Window.Resources>
 
   <Border x:Name="Root">
     <Grid>
       <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="248" />
+        <ColumnDefinition Width="256" />
         <ColumnDefinition Width="*" />
       </Grid.ColumnDefinitions>
       <Grid.RowDefinitions>
-        <RowDefinition Height="40" />
+        <RowDefinition Height="44" />
         <RowDefinition Height="*" />
       </Grid.RowDefinitions>
+
+      <!-- Ambient glow behind the content -->
+      <Border Grid.Column="1" Grid.RowSpan="2" IsHitTestVisible="False">
+        <Border.Background>
+          <RadialGradientBrush Center="0.85,0.0" GradientOrigin="0.85,0.0" RadiusX="0.7" RadiusY="0.6">
+            <GradientStop Color="#2200B8FC" Offset="0" />
+            <GradientStop Color="#107B61FF" Offset="0.5" />
+            <GradientStop Color="#00000000" Offset="1" />
+          </RadialGradientBrush>
+        </Border.Background>
+      </Border>
 
       <!-- ===================== Sidebar ===================== -->
       <Border Grid.RowSpan="2" Background="{StaticResource Sidebar}" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,0,1,0" />
 
       <StackPanel Orientation="Horizontal" Margin="18,0,0,0" VerticalAlignment="Center">
-        <Border Width="22" Height="22" CornerRadius="6" Background="{StaticResource AccentGradient}">
-          <TextBlock Text="&#xE720;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        <Border Width="24" Height="24" CornerRadius="7" Background="{StaticResource AccentGradient}">
+          <TextBlock Text="&#xE720;" FontFamily="{StaticResource Icons}" FontSize="12" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
         </Border>
-        <TextBlock Text="YETIHUB" FontFamily="{StaticResource Display}" FontWeight="Bold" FontSize="13" Margin="10,0,0,0" VerticalAlignment="Center" />
+        <TextBlock Text="YETI" FontFamily="{StaticResource Display}" FontWeight="Bold" FontSize="14" Margin="10,0,0,0" VerticalAlignment="Center" />
+        <TextBlock Text="HUB" FontFamily="{StaticResource Display}" FontWeight="Bold" FontSize="14" Foreground="{StaticResource Accent}" VerticalAlignment="Center" />
       </StackPanel>
 
-      <DockPanel Grid.Row="1" Margin="14,10,14,14">
+      <DockPanel Grid.Row="1" Margin="14,8,14,14">
         <!-- Device chip -->
-        <Border DockPanel.Dock="Top" Background="#151922" CornerRadius="12" Padding="12" Margin="0,0,0,22" BorderBrush="{StaticResource CardBorder}" BorderThickness="1">
+        <Border DockPanel.Dock="Top" Background="#151922" CornerRadius="12" Padding="12" Margin="0,0,0,20" BorderBrush="{StaticResource CardBorder}" BorderThickness="1">
           <DockPanel>
-            <Grid DockPanel.Dock="Left" Width="10" Height="10" Margin="0,0,10,0" VerticalAlignment="Center">
-              <Ellipse x:Name="StatusDot">
-                <Ellipse.Style>
-                  <Style TargetType="Ellipse">
-                    <Setter Property="Fill" Value="{StaticResource Bad}" />
-                    <Style.Triggers>
-                      <DataTrigger Binding="{Binding IsConnected}" Value="True">
-                        <Setter Property="Fill" Value="{StaticResource Good}" />
-                      </DataTrigger>
-                      <DataTrigger Binding="{Binding IsScanning}" Value="True">
-                        <Setter Property="Fill" Value="{StaticResource Accent}" />
-                      </DataTrigger>
-                    </Style.Triggers>
-                  </Style>
-                </Ellipse.Style>
-              </Ellipse>
-            </Grid>
+            <Ellipse DockPanel.Dock="Left" Width="10" Height="10" Margin="0,0,10,0" VerticalAlignment="Center">
+              <Ellipse.Style>
+                <Style TargetType="Ellipse">
+                  <Setter Property="Fill" Value="{StaticResource Bad}" />
+                  <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsConnected}" Value="True">
+                      <Setter Property="Fill" Value="{StaticResource Good}" />
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding IsScanning}" Value="True">
+                      <Setter Property="Fill" Value="{StaticResource Accent}" />
+                    </DataTrigger>
+                  </Style.Triggers>
+                </Style>
+              </Ellipse.Style>
+            </Ellipse>
             <StackPanel>
               <TextBlock Text="{Binding DeviceTitle}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
               <TextBlock Text="{Binding DeviceStatus}" Style="{StaticResource Label}" FontSize="11" TextTrimming="CharacterEllipsis" />
@@ -115,24 +195,30 @@
 
         <!-- Footer -->
         <StackPanel DockPanel.Dock="Bottom">
-          <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-            <Button Style="{StaticResource GhostButton}" Command="{Binding DuplicateProfileCommand}" ToolTip="Duplicate profile">
+          <UniformGrid Columns="3" Margin="0,8,0,10">
+            <Button Style="{StaticResource GhostButton}" Command="{Binding NewProfileCommand}" ToolTip="New profile from current settings">
               <StackPanel Orientation="Horizontal">
-                <TextBlock Text="&#xE8C8;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Foreground="{StaticResource Muted}" VerticalAlignment="Center" />
-                <TextBlock Text="Duplicate" Foreground="{StaticResource Muted}" Margin="6,0,0,0" />
+                <TextBlock Text="&#xE710;" FontFamily="{StaticResource Icons}" VerticalAlignment="Center" />
+                <TextBlock Text="New" Margin="6,0,0,0" />
               </StackPanel>
             </Button>
-            <Button Style="{StaticResource GhostButton}" Command="{Binding DeleteProfileCommand}" ToolTip="Delete profile">
+            <Button Style="{StaticResource GhostButton}" Command="{Binding DuplicateProfileCommand}" ToolTip="Duplicate the active profile">
               <StackPanel Orientation="Horizontal">
-                <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Foreground="{StaticResource Muted}" VerticalAlignment="Center" />
-                <TextBlock Text="Delete" Foreground="{StaticResource Muted}" Margin="6,0,0,0" />
+                <TextBlock Text="&#xE8C8;" FontFamily="{StaticResource Icons}" VerticalAlignment="Center" />
+                <TextBlock Text="Copy" Margin="6,0,0,0" />
               </StackPanel>
             </Button>
-          </StackPanel>
+            <Button Style="{StaticResource GhostButton}" Command="{Binding DeleteProfileCommand}" ToolTip="Delete (your profiles only)">
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="&#xE74D;" FontFamily="{StaticResource Icons}" VerticalAlignment="Center" />
+                <TextBlock Text="Delete" Margin="6,0,0,0" />
+              </StackPanel>
+            </Button>
+          </UniformGrid>
           <DockPanel>
             <Border DockPanel.Dock="Right" Background="{StaticResource AccentGradient}" CornerRadius="8" Padding="8,2"
                     Visibility="{Binding UpdateAvailable, Converter={StaticResource BoolToVis}}">
-              <TextBlock Text="Update" FontSize="11" FontWeight="SemiBold" Foreground="White" />
+              <TextBlock Text="Update ready" FontSize="11" FontWeight="SemiBold" Foreground="White" />
             </Border>
             <TextBlock Style="{StaticResource Label}" FontSize="11">
               <Run Text="v" /><Run Text="{Binding AppVersion, Mode=OneWay}" />
@@ -140,26 +226,34 @@
           </DockPanel>
         </StackPanel>
 
-        <!-- Profiles -->
-        <DockPanel DockPanel.Dock="Top">
-          <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Command="{Binding NewProfileCommand}" ToolTip="New profile from current settings" Margin="0,-6,0,0">
-            <TextBlock Text="&#xE710;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Foreground="{StaticResource Accent}" />
-          </Button>
-          <TextBlock Text="Profiles" Style="{StaticResource Overline}" />
-        </DockPanel>
-        <ListBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding ActiveProfile}" Background="Transparent" BorderThickness="0"
+        <!-- Profiles, grouped Standard / My profiles -->
+        <ListBox ItemsSource="{Binding ProfilesView}" SelectedItem="{Binding ActiveProfile}" Background="Transparent" BorderThickness="0"
                  ItemContainerStyle="{StaticResource ProfileItem}" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+          <ListBox.GroupStyle>
+            <GroupStyle>
+              <GroupStyle.HeaderTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding Name}" Style="{StaticResource Overline}" Margin="6,10,0,8" />
+                </DataTemplate>
+              </GroupStyle.HeaderTemplate>
+            </GroupStyle>
+          </ListBox.GroupStyle>
           <ListBox.ItemTemplate>
             <DataTemplate>
               <DockPanel>
                 <Border x:Name="avatar" Width="30" Height="30" CornerRadius="9" Background="#222834" Margin="0,0,12,0">
                   <TextBlock Text="{Binding Initial}" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Border>
+                <TextBlock x:Name="lock" DockPanel.Dock="Right" Text="&#xE72E;" FontFamily="{StaticResource Icons}" FontSize="11"
+                           Foreground="{StaticResource Dim}" VerticalAlignment="Center" Visibility="Collapsed" ToolTip="Standard profile (read-only)" />
                 <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" FontWeight="Medium" />
               </DockPanel>
               <DataTemplate.Triggers>
                 <DataTrigger Binding="{Binding IsActive}" Value="True">
                   <Setter TargetName="avatar" Property="Background" Value="{StaticResource AccentGradient}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsBuiltIn}" Value="True">
+                  <Setter TargetName="lock" Property="Visibility" Value="Visible" />
                 </DataTrigger>
               </DataTemplate.Triggers>
             </DataTemplate>
@@ -170,22 +264,60 @@
       <!-- ===================== Title bar ===================== -->
       <DockPanel Grid.Column="1">
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+          <!-- Live latency badge -->
+          <Border x:Name="LatencyBadge" CornerRadius="11" Padding="10,3" Margin="0,0,14,0" VerticalAlignment="Center" BorderThickness="1"
+                  ToolTip="Measured mic-to-ear delay of the processed signal (capture + effects + output buffer + Windows mixer)">
+            <Border.Style>
+              <Style TargetType="Border">
+                <Setter Property="Background" Value="#161A21" />
+                <Setter Property="BorderBrush" Value="#2A303B" />
+                <Setter Property="TextElement.Foreground" Value="{StaticResource Muted}" />
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding LatencyGrade}" Value="great">
+                    <Setter Property="Background" Value="#122A22" />
+                    <Setter Property="BorderBrush" Value="#1F5C46" />
+                    <Setter Property="TextElement.Foreground" Value="{StaticResource Good}" />
+                  </DataTrigger>
+                  <DataTrigger Binding="{Binding LatencyGrade}" Value="good">
+                    <Setter Property="Background" Value="#2A2612" />
+                    <Setter Property="BorderBrush" Value="#5C511F" />
+                    <Setter Property="TextElement.Foreground" Value="#FFC83D" />
+                  </DataTrigger>
+                  <DataTrigger Binding="{Binding LatencyGrade}" Value="high">
+                    <Setter Property="Background" Value="#2A1218" />
+                    <Setter Property="BorderBrush" Value="#5C1F2C" />
+                    <Setter Property="TextElement.Foreground" Value="{StaticResource Bad}" />
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </Border.Style>
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="&#xE945;" FontFamily="{StaticResource Icons}" FontSize="11" VerticalAlignment="Center" />
+              <TextBlock Text="{Binding LatencyText}" FontWeight="SemiBold" FontSize="12" Margin="6,0,0,0" />
+            </StackPanel>
+          </Border>
           <Button Style="{StaticResource CaptionButton}" Content="&#xE921;" Click="Minimize_Click" />
           <Button Style="{StaticResource CaptionButton}" Content="&#xE922;" x:Name="MaxButton" Click="Maximize_Click" />
           <Button Style="{StaticResource CloseButton}" Content="&#xE8BB;" Click="Close_Click" />
         </StackPanel>
         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="28,0,0,0">
-          <TextBlock Text="Profile" Style="{StaticResource Label}" />
-          <!-- Click the name to rename the active profile -->
-          <TextBox Text="{Binding ActiveProfile.Name, UpdateSourceTrigger=LostFocus}" Margin="8,0,0,0" MinWidth="60"
-                   Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}" CaretBrush="{StaticResource Accent}"
-                   FontWeight="SemiBold" FontSize="13" WindowChrome.IsHitTestVisibleInChrome="True" ToolTip="Click to rename"
+          <TextBlock Text="Profile" Style="{StaticResource Label}" VerticalAlignment="Center" />
+          <TextBox Text="{Binding ActiveProfile.Name, UpdateSourceTrigger=LostFocus}" Margin="8,0,0,0" MinWidth="60" VerticalAlignment="Center"
+                   IsReadOnly="{Binding IsLocked}" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}" CaretBrush="{StaticResource Accent}"
+                   FontWeight="SemiBold" FontSize="13" WindowChrome.IsHitTestVisibleInChrome="True" ToolTip="Click to rename your profile"
                    KeyDown="ProfileName_KeyDown" />
+          <Border CornerRadius="6" Background="#1E232D" Padding="7,2" Margin="8,0,0,0" VerticalAlignment="Center"
+                  Visibility="{Binding IsLocked, Converter={StaticResource BoolToVis}}">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="&#xE72E;" FontFamily="{StaticResource Icons}" FontSize="10" Foreground="{StaticResource Muted}" VerticalAlignment="Center" />
+              <TextBlock Text="Standard" FontSize="11" Foreground="{StaticResource Muted}" Margin="5,0,0,0" />
+            </StackPanel>
+          </Border>
         </StackPanel>
       </DockPanel>
 
       <!-- ===================== Pages ===================== -->
-      <TabControl Grid.Row="1" Grid.Column="1" Style="{StaticResource NavTabs}" Margin="0,6,0,0">
+      <TabControl Grid.Row="1" Grid.Column="1" Style="{StaticResource NavTabs}" Margin="0,4,0,0">
 
         <!-- ========== MICROPHONE ========== -->
         <TabItem Header="MICROPHONE">
@@ -201,78 +333,90 @@
                 <Border Style="{StaticResource CardBox}" Padding="24">
                   <Grid>
                     <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="170" />
+                      <ColumnDefinition Width="180" />
                       <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
 
-                    <Viewbox Height="270" VerticalAlignment="Center">
-                      <Canvas Width="160" Height="300">
-                        <Ellipse Canvas.Left="0" Canvas.Top="250" Width="160" Height="50">
-                          <Ellipse.Fill>
-                            <RadialGradientBrush>
-                              <GradientStop Color="#5500B8FC" Offset="0" />
-                              <GradientStop Color="#0000B8FC" Offset="1" />
-                            </RadialGradientBrush>
-                          </Ellipse.Fill>
-                          <Ellipse.Style>
-                            <Style TargetType="Ellipse">
-                              <Setter Property="Opacity" Value="0" />
-                              <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsConnected}" Value="True">
-                                  <Setter Property="Opacity" Value="1" />
-                                </DataTrigger>
-                              </Style.Triggers>
-                            </Style>
-                          </Ellipse.Style>
-                        </Ellipse>
-                        <Path Data="M 26,118 L 26,192 Q 26,218 52,218 L 108,218 Q 134,218 134,192 L 134,118" Stroke="#3A414E" StrokeThickness="8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
-                        <Ellipse Canvas.Left="18" Canvas.Top="110" Width="16" Height="16" Fill="#4A5160" />
-                        <Ellipse Canvas.Left="126" Canvas.Top="110" Width="16" Height="16" Fill="#4A5160" />
-                        <Rectangle Canvas.Left="74" Canvas.Top="218" Width="12" Height="40" Fill="#2A2F38" />
-                        <Rectangle Canvas.Left="22" Canvas.Top="256" Width="116" Height="22" RadiusX="11" RadiusY="11">
-                          <Rectangle.Fill>
-                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                              <GradientStop Color="#363C48" Offset="0" />
-                              <GradientStop Color="#1B1F27" Offset="1" />
-                            </LinearGradientBrush>
-                          </Rectangle.Fill>
-                        </Rectangle>
-                        <Rectangle Canvas.Left="38" Canvas.Top="14" Width="84" Height="186" RadiusX="42" RadiusY="42">
-                          <Rectangle.Fill>
-                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                              <GradientStop Color="#2A2F38" Offset="0" />
-                              <GradientStop Color="#5A6170" Offset="0.35" />
-                              <GradientStop Color="#3A404C" Offset="0.7" />
-                              <GradientStop Color="#22262E" Offset="1" />
-                            </LinearGradientBrush>
-                          </Rectangle.Fill>
-                        </Rectangle>
-                        <Rectangle Canvas.Left="43" Canvas.Top="19" Width="74" Height="86" RadiusX="37" RadiusY="37" Fill="{StaticResource Grille}" />
-                        <Rectangle Canvas.Left="38" Canvas.Top="104" Width="84" Height="5" Fill="#1A1D23" />
-                        <Ellipse Canvas.Left="70" Canvas.Top="128" Width="20" Height="20" Fill="#15181E" Stroke="#4E5562" StrokeThickness="1.5" />
-                        <Ellipse Canvas.Left="76" Canvas.Top="160" Width="8" Height="8">
-                          <Ellipse.Style>
-                            <Style TargetType="Ellipse">
-                              <Setter Property="Fill" Value="#2EE6A6" />
-                              <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsMuted}" Value="True">
-                                  <Setter Property="Fill" Value="#FF4D6A" />
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding IsConnected}" Value="False">
-                                  <Setter Property="Fill" Value="#2A2F38" />
-                                </DataTrigger>
-                              </Style.Triggers>
-                            </Style>
-                          </Ellipse.Style>
-                        </Ellipse>
-                      </Canvas>
-                    </Viewbox>
+                    <Grid>
+                      <!-- Voice-reactive glow -->
+                      <Ellipse Width="190" Height="190" IsHitTestVisible="False" Opacity="{Binding Glow}">
+                        <Ellipse.Fill>
+                          <RadialGradientBrush>
+                            <GradientStop Color="#6600B8FC" Offset="0" />
+                            <GradientStop Color="#337B61FF" Offset="0.55" />
+                            <GradientStop Color="#00000000" Offset="1" />
+                          </RadialGradientBrush>
+                        </Ellipse.Fill>
+                      </Ellipse>
+                      <Viewbox Height="270" VerticalAlignment="Center">
+                        <Canvas Width="160" Height="300">
+                          <Ellipse Canvas.Left="0" Canvas.Top="250" Width="160" Height="50">
+                            <Ellipse.Fill>
+                              <RadialGradientBrush>
+                                <GradientStop Color="#7700B8FC" Offset="0" />
+                                <GradientStop Color="#0000B8FC" Offset="1" />
+                              </RadialGradientBrush>
+                            </Ellipse.Fill>
+                            <Ellipse.Style>
+                              <Style TargetType="Ellipse">
+                                <Setter Property="Opacity" Value="0" />
+                                <Style.Triggers>
+                                  <DataTrigger Binding="{Binding IsConnected}" Value="True">
+                                    <Setter Property="Opacity" Value="1" />
+                                  </DataTrigger>
+                                </Style.Triggers>
+                              </Style>
+                            </Ellipse.Style>
+                          </Ellipse>
+                          <Path Data="M 26,118 L 26,192 Q 26,218 52,218 L 108,218 Q 134,218 134,192 L 134,118" Stroke="#3A414E" StrokeThickness="8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                          <Ellipse Canvas.Left="18" Canvas.Top="110" Width="16" Height="16" Fill="#4A5160" />
+                          <Ellipse Canvas.Left="126" Canvas.Top="110" Width="16" Height="16" Fill="#4A5160" />
+                          <Rectangle Canvas.Left="74" Canvas.Top="218" Width="12" Height="40" Fill="#2A2F38" />
+                          <Rectangle Canvas.Left="22" Canvas.Top="256" Width="116" Height="22" RadiusX="11" RadiusY="11">
+                            <Rectangle.Fill>
+                              <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="#363C48" Offset="0" />
+                                <GradientStop Color="#1B1F27" Offset="1" />
+                              </LinearGradientBrush>
+                            </Rectangle.Fill>
+                          </Rectangle>
+                          <Rectangle Canvas.Left="38" Canvas.Top="14" Width="84" Height="186" RadiusX="42" RadiusY="42">
+                            <Rectangle.Fill>
+                              <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                <GradientStop Color="#2A2F38" Offset="0" />
+                                <GradientStop Color="#5A6170" Offset="0.35" />
+                                <GradientStop Color="#3A404C" Offset="0.7" />
+                                <GradientStop Color="#22262E" Offset="1" />
+                              </LinearGradientBrush>
+                            </Rectangle.Fill>
+                          </Rectangle>
+                          <Rectangle Canvas.Left="43" Canvas.Top="19" Width="74" Height="86" RadiusX="37" RadiusY="37" Fill="{StaticResource Grille}" />
+                          <Rectangle Canvas.Left="38" Canvas.Top="104" Width="84" Height="5" Fill="#1A1D23" />
+                          <Ellipse Canvas.Left="70" Canvas.Top="128" Width="20" Height="20" Fill="#15181E" Stroke="#4E5562" StrokeThickness="1.5" />
+                          <Ellipse Canvas.Left="76" Canvas.Top="160" Width="8" Height="8">
+                            <Ellipse.Style>
+                              <Style TargetType="Ellipse">
+                                <Setter Property="Fill" Value="#2EE6A6" />
+                                <Style.Triggers>
+                                  <DataTrigger Binding="{Binding IsMuted}" Value="True">
+                                    <Setter Property="Fill" Value="#FF4D6A" />
+                                  </DataTrigger>
+                                  <DataTrigger Binding="{Binding IsConnected}" Value="False">
+                                    <Setter Property="Fill" Value="#2A2F38" />
+                                  </DataTrigger>
+                                </Style.Triggers>
+                              </Style>
+                            </Ellipse.Style>
+                          </Ellipse>
+                        </Canvas>
+                      </Viewbox>
+                    </Grid>
 
                     <StackPanel Grid.Column="1" Margin="24,0,0,0" VerticalAlignment="Center">
-                      <TextBlock Text="Live input" Style="{StaticResource Overline}" />
+                      <TextBlock Text="LIVE INPUT" Style="{StaticResource Overline}" />
                       <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="{Binding InputDb}" FontFamily="{StaticResource Display}" FontSize="60" FontWeight="SemiBold" />
-                        <TextBlock Text="dBFS" Style="{StaticResource Label}" FontSize="14" VerticalAlignment="Bottom" Margin="8,0,0,14" />
+                        <TextBlock Text="{Binding InputDb}" FontFamily="{StaticResource Display}" FontSize="64" FontWeight="SemiBold" />
+                        <TextBlock Text="dBFS" Style="{StaticResource Label}" FontSize="14" VerticalAlignment="Bottom" Margin="8,0,0,15" />
                       </StackPanel>
                       <c:LevelMeter Height="14" Level="{Binding InputLevel}" Peak="{Binding InputPeak}" Margin="0,4,0,6" />
                       <DockPanel Margin="0,0,0,22">
@@ -295,7 +439,7 @@
                 <Border Grid.Column="1" Style="{StaticResource CardBox}" IsEnabled="{Binding IsConnected}">
                   <UniformGrid Columns="2" VerticalAlignment="Center">
                     <StackPanel>
-                      <TextBlock Text="Mic gain" Style="{StaticResource Overline}" HorizontalAlignment="Center" />
+                      <TextBlock Text="MIC GAIN" Style="{StaticResource Overline}" HorizontalAlignment="Center" />
                       <Grid Width="132" Height="132">
                         <c:Knob Minimum="0" Maximum="100" DefaultValue="60" Value="{Binding Gain}" />
                         <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="{StaticResource Display}" FontSize="24" FontWeight="SemiBold" IsHitTestVisible="False">
@@ -305,7 +449,7 @@
                       <TextBlock Text="{Binding GainLabel}" Style="{StaticResource Label}" HorizontalAlignment="Center" Margin="0,8,0,0" />
                     </StackPanel>
                     <StackPanel Visibility="{Binding HasHeadphones, Converter={StaticResource BoolToVis}}">
-                      <TextBlock Text="Headphones" Style="{StaticResource Overline}" HorizontalAlignment="Center" />
+                      <TextBlock Text="HEADPHONES" Style="{StaticResource Overline}" HorizontalAlignment="Center" />
                       <Grid Width="132" Height="132">
                         <c:Knob Minimum="0" Maximum="100" DefaultValue="70" Value="{Binding HeadphoneVolume}" />
                         <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="{StaticResource Display}" FontSize="24" FontWeight="SemiBold" IsHitTestVisible="False">
@@ -330,14 +474,18 @@
                     <TextBlock Text="Hear yourself (with effects)" Style="{StaticResource CardTitle}" />
                     <TextBlock Style="{StaticResource Label}" TextWrapping="Wrap" Margin="0,4,0,12"
                                Text="Plays your processed voice on a speaker or headset. For zero-delay raw monitoring, plug headphones into the Yeti itself." />
-                    <ComboBox ItemsSource="{Binding MonitorOutputs}" SelectedItem="{Binding MonitorOutput}" />
-                    <TextBlock Text="{Binding LatencyText}" Style="{StaticResource Label}" FontSize="11" Margin="2,8,0,0" />
+                    <ComboBox Style="{StaticResource OutputCombo}" ItemsSource="{Binding MonitorOutputs}" SelectedItem="{Binding MonitorOutput}" />
+                    <DockPanel Margin="0,10,0,0" Visibility="{Binding HasUnpluggedOutputs, Converter={StaticResource BoolToVis}}">
+                      <Button DockPanel.Dock="Right" Content="Sound settings" Command="{Binding OpenSoundSettingsCommand}" Padding="10,5" />
+                      <TextBlock Style="{StaticResource Label}" FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,10,0"
+                                 Text="Greyed-out devices are 'unplugged' in Windows. Realtek: use the rear green jack, or disable jack detection in Realtek Audio Console." />
+                    </DockPanel>
                   </StackPanel>
                   <StackPanel Grid.Column="2">
                     <TextBlock Text="Send to Discord / OBS (virtual mic)" Style="{StaticResource CardTitle}" />
                     <TextBlock Style="{StaticResource Label}" TextWrapping="Wrap" Margin="0,4,0,12"
                                Text="Pick a virtual cable here, then choose its 'CABLE Output' as the microphone in Discord, OBS or your game." />
-                    <ComboBox ItemsSource="{Binding VirtualMicOutputs}" SelectedItem="{Binding VirtualMicOutput}" />
+                    <ComboBox Style="{StaticResource OutputCombo}" ItemsSource="{Binding VirtualMicOutputs}" SelectedItem="{Binding VirtualMicOutput}" />
                     <DockPanel Margin="0,10,0,0">
                       <DockPanel.Style>
                         <Style TargetType="DockPanel">
@@ -355,6 +503,24 @@
                   </StackPanel>
                 </Grid>
               </Border>
+
+              <!-- Latency -->
+              <Border Style="{StaticResource CardBox}" IsEnabled="{Binding IsConnected}">
+                <DockPanel>
+                  <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center" Margin="24,0,0,0">
+                    <TextBlock Text="{Binding LatencyText}" FontFamily="{StaticResource Display}" FontSize="34" FontWeight="SemiBold" HorizontalAlignment="Right" />
+                    <TextBlock Text="measured mic → ear" Style="{StaticResource Label}" FontSize="11" HorizontalAlignment="Right" />
+                  </StackPanel>
+                  <StackPanel>
+                    <ToggleButton Style="{StaticResource Toggle}" IsChecked="{Binding UltraLowLatency}">
+                      <TextBlock Text="Ultra-low latency" FontFamily="{StaticResource Display}" FontSize="16" FontWeight="SemiBold" />
+                    </ToggleButton>
+                    <TextBlock Style="{StaticResource Label}" TextWrapping="Wrap" Margin="50,6,0,0"
+                               Text="Takes exclusive control of the Yeti (3 ms packets instead of 10 ms). Discord, OBS and games must then use the virtual mic above. Pick 'Raw (No FX)' for the absolute minimum." />
+                    <TextBlock Text="{Binding EngineInfo}" Style="{StaticResource Label}" FontSize="11" Margin="50,6,0,0" Foreground="{StaticResource Accent}" />
+                  </StackPanel>
+                </DockPanel>
+              </Border>
             </StackPanel>
           </ScrollViewer>
         </TabItem>
@@ -363,41 +529,92 @@
         <TabItem Header="VOICE FX">
           <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="28,0,12,0">
             <StackPanel Style="{StaticResource Page}">
-              <Border Style="{StaticResource CardBox}">
-                <Grid>
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                  </Grid.ColumnDefinitions>
-                  <StackPanel VerticalAlignment="Center" Margin="0,0,32,0">
-                    <ToggleButton Style="{StaticResource Toggle}" IsChecked="{Binding EffectsEnabled}">
-                      <TextBlock Text="Voice FX" FontFamily="{StaticResource Display}" FontSize="18" FontWeight="SemiBold" />
-                    </ToggleButton>
-                    <TextBlock Style="{StaticResource Label}" Margin="50,4,0,0">
-                      <Run Text="Saved to" /> <Run Text="{Binding ActiveProfile.Name, Mode=OneWay}" Foreground="{StaticResource Accent}" />
+              <!-- Locked banner -->
+              <Border CornerRadius="14" Padding="18,14" Margin="0,0,16,16" BorderThickness="1" BorderBrush="#2C4A66"
+                      Visibility="{Binding IsLocked, Converter={StaticResource BoolToVis}}">
+                <Border.Background>
+                  <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                    <GradientStop Color="#1A2A3D" Offset="0" />
+                    <GradientStop Color="#1E1A33" Offset="1" />
+                  </LinearGradientBrush>
+                </Border.Background>
+                <DockPanel>
+                  <Button DockPanel.Dock="Right" Style="{StaticResource AccentButton}" Command="{Binding DuplicateProfileCommand}" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal">
+                      <TextBlock Text="&#xE70F;" FontFamily="{StaticResource Icons}" VerticalAlignment="Center" />
+                      <TextBlock Text="Customize a copy" Margin="8,0,0,0" />
+                    </StackPanel>
+                  </Button>
+                  <TextBlock Text="&#xE72E;" FontFamily="{StaticResource Icons}" FontSize="20" Foreground="{StaticResource Accent}" VerticalAlignment="Center" Margin="0,0,14,0" />
+                  <StackPanel VerticalAlignment="Center">
+                    <TextBlock FontWeight="SemiBold">
+                      <Run Text="{Binding ActiveProfile.Name, Mode=OneWay}" /><Run Text=" is a standard profile" />
                     </TextBlock>
+                    <TextBlock Text="{Binding ActiveProfile.Tagline}" Style="{StaticResource Label}" Margin="0,2,0,0" />
                   </StackPanel>
-                  <Grid Grid.Column="1" VerticalAlignment="Center">
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="40" />
-                      <ColumnDefinition Width="*" />
-                      <ColumnDefinition Width="80" />
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                      <RowDefinition />
-                      <RowDefinition />
-                    </Grid.RowDefinitions>
-                    <TextBlock Text="IN" Style="{StaticResource Label}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    <c:LevelMeter Grid.Column="1" Height="10" Level="{Binding InputLevel}" Peak="{Binding InputPeak}" Margin="0,4" />
-                    <TextBlock Grid.Row="1" Text="OUT" Style="{StaticResource Label}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    <c:LevelMeter Grid.Row="1" Grid.Column="1" Height="10" Level="{Binding OutputLevel}" Peak="{Binding OutputPeak}" Margin="0,4" />
-                    <TextBlock Grid.Column="2" Grid.RowSpan="2" Text="{Binding Compression}" Foreground="{StaticResource Accent}" HorizontalAlignment="Right" VerticalAlignment="Center"
-                               FontWeight="SemiBold" ToolTip="Compressor gain reduction" />
-                  </Grid>
-                </Grid>
+                </DockPanel>
               </Border>
 
-              <ItemsControl ItemsSource="{Binding Effects}">
+              <!-- Master + meters + signal chain -->
+              <Border Style="{StaticResource CardBox}">
+                <StackPanel>
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="Auto" />
+                      <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center" Margin="0,0,32,0">
+                      <ToggleButton Style="{StaticResource Toggle}" IsChecked="{Binding EffectsEnabled}" IsHitTestVisible="{Binding CanEditFx}" Focusable="False">
+                        <TextBlock Text="Voice FX" FontFamily="{StaticResource Display}" FontSize="18" FontWeight="SemiBold" />
+                      </ToggleButton>
+                      <TextBlock Style="{StaticResource Label}" Margin="50,4,0,0">
+                        <Run Text="Profile:" /> <Run Text="{Binding ActiveProfile.Name, Mode=OneWay}" Foreground="{StaticResource Accent}" />
+                      </TextBlock>
+                    </StackPanel>
+                    <Grid Grid.Column="1" VerticalAlignment="Center">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="40" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="90" />
+                      </Grid.ColumnDefinitions>
+                      <Grid.RowDefinitions>
+                        <RowDefinition />
+                        <RowDefinition />
+                      </Grid.RowDefinitions>
+                      <TextBlock Text="IN" Style="{StaticResource Label}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                      <c:LevelMeter Grid.Column="1" Height="10" Level="{Binding InputLevel}" Peak="{Binding InputPeak}" Margin="0,4" />
+                      <TextBlock Grid.Row="1" Text="OUT" Style="{StaticResource Label}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                      <c:LevelMeter Grid.Row="1" Grid.Column="1" Height="10" Level="{Binding OutputLevel}" Peak="{Binding OutputPeak}" Margin="0,4" />
+                      <StackPanel Grid.Column="2" Grid.RowSpan="2" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Compression}" Foreground="{StaticResource CatDynamics}" FontWeight="SemiBold" HorizontalAlignment="Right" />
+                        <TextBlock Text="comp" Style="{StaticResource Label}" FontSize="10" HorizontalAlignment="Right" />
+                      </StackPanel>
+                    </Grid>
+                  </Grid>
+
+                  <TextBlock Text="SIGNAL CHAIN" Style="{StaticResource Overline}" Margin="0,18,0,8" />
+                  <ItemsControl ItemsSource="{Binding Effects}" IsHitTestVisible="{Binding CanEditFx}" Focusable="False">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <WrapPanel />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                          <ToggleButton Style="{StaticResource ChainPill}" IsChecked="{Binding Enabled}" ToolTip="{Binding Description}">
+                            <TextBlock Text="{Binding Name}" FontSize="12" />
+                          </ToggleButton>
+                          <TextBlock Text="&#xE76C;" FontFamily="{StaticResource Icons}" FontSize="9" Foreground="{StaticResource Dim}" VerticalAlignment="Center" Margin="5,0" />
+                        </StackPanel>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </Border>
+
+              <!-- Effect cards -->
+              <ItemsControl ItemsSource="{Binding Effects}" IsHitTestVisible="{Binding CanEditFx}" Focusable="False">
                 <ItemsControl.ItemsPanel>
                   <ItemsPanelTemplate>
                     <WrapPanel />
@@ -405,28 +622,33 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
-                    <Border x:Name="card" Style="{StaticResource CardBox}" Width="440" MinHeight="196">
-                      <StackPanel>
-                        <DockPanel Margin="0,0,0,4">
-                          <ToggleButton DockPanel.Dock="Right" Style="{StaticResource Toggle}" IsChecked="{Binding Enabled}" />
-                          <TextBlock Text="{Binding Name}" Style="{StaticResource CardTitle}" VerticalAlignment="Center" />
-                        </DockPanel>
-                        <TextBlock Text="{Binding Description}" Style="{StaticResource Label}" TextWrapping="Wrap" Margin="0,0,0,16" />
-                        <ItemsControl x:Name="knobs" ItemsSource="{Binding Parameters}" ItemTemplate="{StaticResource ParamKnob}">
-                          <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                              <WrapPanel />
-                            </ItemsPanelTemplate>
-                          </ItemsControl.ItemsPanel>
-                        </ItemsControl>
-                      </StackPanel>
+                    <Border x:Name="card" Style="{StaticResource CardBox}" Width="440" MinHeight="190" Padding="0">
+                      <Grid>
+                        <Border Width="4" HorizontalAlignment="Left" CornerRadius="14,0,0,14" Style="{StaticResource CategoryBrush}" x:Name="bar" Opacity="0.3" />
+                        <StackPanel Margin="20,18,20,16">
+                          <DockPanel Margin="0,0,0,4">
+                            <ToggleButton DockPanel.Dock="Right" Style="{StaticResource Toggle}" IsChecked="{Binding Enabled}" />
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding LatencyNote}" Style="{StaticResource Label}" FontSize="11" VerticalAlignment="Center" Margin="0,0,12,0" />
+                            <TextBlock Text="{Binding Name}" Style="{StaticResource CardTitle}" VerticalAlignment="Center" />
+                          </DockPanel>
+                          <TextBlock Text="{Binding Description}" Style="{StaticResource Label}" TextWrapping="Wrap" Margin="0,0,0,14" />
+                          <ItemsControl x:Name="knobs" ItemsSource="{Binding Parameters}" ItemTemplate="{StaticResource ParamKnob}">
+                            <ItemsControl.ItemsPanel>
+                              <ItemsPanelTemplate>
+                                <WrapPanel />
+                              </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                          </ItemsControl>
+                        </StackPanel>
+                      </Grid>
                     </Border>
                     <DataTemplate.Triggers>
                       <DataTrigger Binding="{Binding Enabled}" Value="False">
-                        <Setter TargetName="knobs" Property="Opacity" Value="0.45" />
+                        <Setter TargetName="knobs" Property="Opacity" Value="0.4" />
                       </DataTrigger>
                       <DataTrigger Binding="{Binding Enabled}" Value="True">
                         <Setter TargetName="card" Property="BorderBrush" Value="#24405A" />
+                        <Setter TargetName="bar" Property="Opacity" Value="1" />
                       </DataTrigger>
                     </DataTemplate.Triggers>
                   </DataTemplate>
@@ -513,13 +735,13 @@
                         <TextBlock Text="{Binding UsbIds}" />
                       </StackPanel>
                       <StackPanel Margin="0,0,0,14">
-                        <TextBlock Text="Firmware" Style="{StaticResource Overline}" Margin="0,0,0,2" />
+                        <TextBlock Text="FIRMWARE" Style="{StaticResource Overline}" Margin="0,0,0,2" />
                         <TextBlock Text="{Binding Firmware}" />
                       </StackPanel>
                     </UniformGrid>
-                    <TextBlock Text="Audio format" Style="{StaticResource Overline}" Margin="0,0,0,2" />
-                    <TextBlock Text="{Binding Format}" TextWrapping="Wrap" Margin="0,0,0,14" />
-                    <TextBlock Text="Windows drivers" Style="{StaticResource Overline}" Margin="0,0,0,6" />
+                    <TextBlock Text="AUDIO ENGINE" Style="{StaticResource Overline}" Margin="0,0,0,2" />
+                    <TextBlock Text="{Binding EngineInfo}" TextWrapping="Wrap" Margin="0,0,0,14" />
+                    <TextBlock Text="WINDOWS DRIVERS" Style="{StaticResource Overline}" Margin="0,0,0,6" />
                     <ItemsControl ItemsSource="{Binding Drivers}">
                       <ItemsControl.ItemTemplate>
                         <DataTemplate>

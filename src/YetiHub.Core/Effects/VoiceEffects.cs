@@ -10,6 +10,8 @@ public sealed class LowCutEffect : Effect
         _frequency = Param("frequency", "Cutoff", 20, 300, 80, "Hz");
     }
 
+    public override string Category => "clean";
+
     protected override void Reset() { _filter.EnsureChannels(Channels); _filter.Reset(); }
     protected override void Update() => _filter.SetHighPass(SampleRate, _frequency.Value);
 
@@ -33,6 +35,8 @@ public sealed class NoiseGateEffect : Effect
         _range = Param("range", "Reduction", -80, 0, -40, "dB");
         _release = Param("release", "Release", 20, 500, 150, "ms");
     }
+
+    public override string Category => "clean";
 
     protected override void Update()
     {
@@ -76,6 +80,8 @@ public sealed class VoiceEqEffect : Effect
         _airDb = Param("air", "Air · 10 kHz", -12, 12, 0, "dB");
     }
 
+    public override string Category => "tone";
+
     protected override void Reset()
     {
         foreach (var b in new[] { _bass, _body, _presence, _air }) { b.EnsureChannels(Channels); b.Reset(); }
@@ -113,8 +119,10 @@ public sealed class DeEsserEffect : Effect
     {
         _threshold = Param("threshold", "Threshold", -50, 0, -30, "dB");
         _frequency = Param("frequency", "Frequency", 4000, 10000, 6500, "Hz");
-        _amount = Param("amount", "Max reduction", 0, 20, 8, "dB");
+        _amount = Param("amount", "Max reduction", 0, 20, 8, "-dB");
     }
+
+    public override string Category => "tone";
 
     protected override void Reset() { _detector.EnsureChannels(Channels); _detector.Reset(); _env = 0; _gain = 1; }
 
@@ -158,6 +166,8 @@ public sealed class CompressorEffect : Effect
         _release = Param("release", "Release", 10, 1000, 120, "ms");
         _makeup = Param("makeup", "Makeup", 0, 24, 6, "dB");
     }
+
+    public override string Category => "dynamics";
 
     /// <summary>Gain reduction of the last processed sample, in dB (0 or negative). For the UI.</summary>
     public float GainReductionDb { get; private set; }
@@ -204,6 +214,8 @@ public sealed class OutputGainEffect : Effect
         _gainDb = Param("gain", "Gain", -24, 24, 0, "dB");
     }
 
+    public override string Category => "dynamics";
+
     protected override void Update() => _target = DbToGain(_gainDb.Value);
 
     protected override void ProcessCore(Span<float> samples)
@@ -229,6 +241,8 @@ public sealed class LimiterEffect : Effect
     {
         _ceiling = Param("ceiling", "Ceiling", -12, 0, -1, "dB");
     }
+
+    public override string Category => "dynamics";
 
     protected override void Update()
     {

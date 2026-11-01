@@ -25,10 +25,13 @@ not write firmware. "Updates" here means YetiHub app updates.
 - Detects the Yeti in milliseconds: USB IDs, firmware revision, bound drivers, audio format; handles hot-plug.
 - Mic gain and Yeti headphone volume on rotary knobs; mute; **Make default mic**.
 - 60 fps LED input/output meters (dBFS, peak hold).
-- **Voice FX** (Blue VO!CE-style chain): Low Cut → Noise Gate → 4-band Voice EQ → De-Esser → Compressor → Output Gain → Limiter.
-- **Profiles:** unlimited, one click to switch, auto-saved as JSON in `%APPDATA%\YetiHub\profiles`.
-  Ships with Natural, Broadcast, Podcast, Streamer, Gaming and Warm & Clear.
-- **Hear yourself** with effects on any speaker/headset (≈40 ms; the Yeti's own jack stays zero-latency raw).
+- **Voice FX**, a 13-stage broadcast chain: Mono → Low Cut → Noise Reduction → Noise Gate → Voice EQ → De-Esser →
+  Auto Level → Compressor → Warmth → Exciter → Room Reverb → Output Gain → Limiter.
+- **Standard profiles** tuned for the Yeti (read-only; "Customize a copy" to edit): Studio Natural, Broadcast Pro,
+  Cinematic Deep, Podcast Clean, Streamer Punch, Gaming Comms, Bright & Clear, Warm & Intimate, Arena Announcer, Raw.
+- **Your profiles:** unlimited, one click to switch, auto-saved as JSON in `%APPDATA%\YetiHub\profiles`.
+- **Low-latency engine** with a live measured latency badge (~24 ms mic-to-ear on a Yeti; Ultra-low mode uses
+  exclusive 3 ms capture). The Yeti's own headphone jack stays zero-latency raw.
 - **Virtual mic:** route the processed voice to VB-CABLE/Voicemeeter so Discord, OBS and games hear your effects.
 - **Mods:** drop-in DLL plugins with real-time audio processors. Ships with a Robot Voice example. See [docs/MODS.md](docs/MODS.md).
 - **Auto-update** from GitHub Releases (Velopack, delta updates).

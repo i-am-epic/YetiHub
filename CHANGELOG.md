@@ -2,6 +2,22 @@
 
 All notable changes to YetiHub. The newest release is at the top; the release workflow ships this file as the release notes.
 
+## 0.2.0
+
+- **New low-latency audio engine** (raw WASAPI, IAudioClient3, MMCSS "Pro Audio" thread): audio is written straight
+  from the capture callback into the output with a 2–8 ms drift-controlled cushion. Measured on a Blue Yeti:
+  ~60 ms → ~24 ms mic-to-ear.
+- **Ultra-low latency mode**: exclusive Yeti capture with 3 ms packets.
+- Live, measured latency badge in the title bar.
+- **6 new effects**: Noise Reduction (spectral, +5.3 ms), Auto Level, Warmth (tube saturation), Exciter, Room Reverb,
+  Mono Voice. The chain is now 13 stages, with a signal-chain view.
+- **Standard profiles** (read-only, tuned for the Yeti): Studio Natural, Broadcast Pro, Cinematic Deep, Podcast Clean,
+  Streamer Punch, Gaming Comms, Bright & Clear, Warm & Intimate, Arena Announcer, Raw. "Customize a copy" makes an
+  editable duplicate.
+- Output pickers list unplugged/disabled devices (e.g. Realtek with no jack detected) with an explanation.
+- Fixed: the virtual-mic picker allowed ordinary speakers, which could play your voice twice.
+- Fixed: knob reduction amounts now read as negative dB.
+
 ## 0.1.0
 
 - Detects the Blue Yeti over USB (VID/PID, firmware revision, bound Windows drivers) via the PnP registry, in milliseconds.
