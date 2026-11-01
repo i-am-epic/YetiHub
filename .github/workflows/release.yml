@@ -1,0 +1,51 @@
+name: Release
+
+# Push a tag like v0.2.0 to build, package and publish a release.
+# Installed copies of YetiHub pick it up through "Check for updates".
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Version from tag
+        id: v
+        shell: pwsh
+        run: '"version=$("${{ github.ref_name }}".TrimStart("v"))" >> $env:GITHUB_OUTPUT'
+
+      - run: dotnet test YetiHub.slnx -c Release
+
+      - name: Publish
+        run: >
+          dotnet publish src/YetiHub.App/YetiHub.App.csproj -c Release -r win-x64 --self-contained
+          -p:Version=${{ steps.v.outputs.version }} -p:PublishReadyToRun=true -o publish
+
+      - name: Install vpk
+        run: dotnet tool install -g vpk --version 1.2.161
+
+      # Fetch the previous release so vpk can build a small delta update.
+      - name: Download previous release
+        run: vpk download github --repoUrl ${{ github.server_url }}/${{ github.repository }} --token ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Pack
+        run: >
+          vpk pack --packId YetiHub --packVersion ${{ steps.v.outputs.version }}
+          --packDir publish --mainExe YetiHub.exe --packTitle YetiHub
+          --releaseNotes CHANGELOG.md
+
+      - name: Upload to GitHub Releases
+        run: >
+          vpk upload github --repoUrl ${{ github.server_url }}/${{ github.repository }}
+          --token ${{ secrets.GITHUB_TOKEN }} --publish
+          --releaseName "YetiHub ${{ steps.v.outputs.version }}" --tag ${{ github.ref_name }}

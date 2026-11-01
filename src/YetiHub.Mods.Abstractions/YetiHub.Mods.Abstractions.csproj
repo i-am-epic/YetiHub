@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Contract that YetiHub mods implement.</Description>
+    <!-- Bump only on breaking changes to the mod API; the loader refuses mods built for another major. -->
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+  </PropertyGroup>
+</Project>

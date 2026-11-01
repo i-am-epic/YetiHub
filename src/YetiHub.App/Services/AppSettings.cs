@@ -1,0 +1,41 @@
+using System.IO;
+using System.Text.Json;
+
+namespace YetiHub.App.Services;
+
+/// <summary>Machine-level settings. Sound settings live in profiles.</summary>
+public sealed class AppSettings
+{
+    public static readonly string DataRoot =
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "YetiHub");
+
+    private static string FilePath => Path.Combine(DataRoot, "settings.json");
+
+    public bool CheckForUpdatesOnStart { get; set; } = true;
+    public string? ActiveProfileId { get; set; }
+    public string? MonitorDeviceId { get; set; }
+    public string? VirtualMicDeviceId { get; set; }
+
+    /// <summary>Mod processor on/off by name; mods not listed keep their own default.</summary>
+    public Dictionary<string, bool> ProcessorStates { get; set; } = [];
+
+    public static AppSettings Load()
+    {
+        try
+        {
+            return File.Exists(FilePath)
+                ? JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath)) ?? new()
+                : new();
+        }
+        catch (JsonException)
+        {
+            return new();
+        }
+    }
+
+    public void Save()
+    {
+        Directory.CreateDirectory(DataRoot);
+        File.WriteAllText(FilePath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+    }
+}

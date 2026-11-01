@@ -1,0 +1,14 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Company>YetiHub</Company>
+    <Product>YetiHub</Product>
+    <Copyright>Copyright (c) 2026 YetiHub contributors</Copyright>
+    <!-- CI overrides this with -p:Version=x.y.z taken from the git tag. -->
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>YetiHub</AssemblyName>
+    <RootNamespace>YetiHub.App</RootNamespace>
+    <!-- Program.Main runs Velopack's install/update hooks before WPF starts. -->
+    <StartupObject>YetiHub.App.Program</StartupObject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Velopack" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\YetiHub.Core\YetiHub.Core.csproj" />
+    <!-- Bundled mods are built with the app but loaded at runtime from bin\mods\, exactly like third-party mods. -->
+    <ProjectReference Include="..\..\mods\YetiHub.Mods.RobotVoice\YetiHub.Mods.RobotVoice.csproj" ReferenceOutputAssembly="false" OutputItemType="BundledMod" />
+  </ItemGroup>
+  <Target Name="IncludeBundledMods" AfterTargets="ResolveProjectReferences">
+    <ItemGroup>
+      <None Include="@(BundledMod)" Link="mods\%(Filename)\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+</Project>

@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/YetiHub.App/YetiHub.App.csproj" />
+    <Project Path="src/YetiHub.Core/YetiHub.Core.csproj" />
+    <Project Path="src/YetiHub.Mods.Abstractions/YetiHub.Mods.Abstractions.csproj" />
+  </Folder>
+  <Folder Name="/mods/">
+    <Project Path="mods/YetiHub.Mods.RobotVoice/YetiHub.Mods.RobotVoice.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/YetiHub.Core.Tests/YetiHub.Core.Tests.csproj" />
+  </Folder>
+</Solution>

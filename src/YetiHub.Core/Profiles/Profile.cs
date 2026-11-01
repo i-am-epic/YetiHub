@@ -1,0 +1,35 @@
+using System.Text.Json;
+
+namespace YetiHub.Core.Profiles;
+
+/// <summary>
+/// A saved sound: mic gain, headphone level and the full Voice FX chain.
+/// </summary>
+public sealed class Profile
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("n");
+    public string Name { get; set; } = "New profile";
+
+    /// <summary>Windows input level, 0..1.</summary>
+    public float Gain { get; set; } = 0.6f;
+
+    /// <summary>Yeti headphone volume, 0..1; null leaves it alone.</summary>
+    public float? HeadphoneVolume { get; set; }
+
+    public bool EffectsEnabled { get; set; } = true;
+    public Dictionary<string, EffectState> Effects { get; set; } = [];
+
+    public Profile Clone(string name)
+    {
+        var copy = JsonSerializer.Deserialize<Profile>(JsonSerializer.Serialize(this))!;
+        copy.Id = Guid.NewGuid().ToString("n");
+        copy.Name = name;
+        return copy;
+    }
+}
+
+public sealed class EffectState
+{
+    public bool Enabled { get; set; }
+    public Dictionary<string, float> Parameters { get; set; } = [];
+}
