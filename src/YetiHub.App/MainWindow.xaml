@@ -12,6 +12,7 @@
 
   <Window.Resources>
     <FontFamily x:Key="Icons">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+    <c:FractionToWidthConverter x:Key="FractionToWidth" />
 
     <!-- Grille texture for the mic illustration -->
     <DrawingBrush x:Key="Grille" TileMode="Tile" Viewport="0,0,5,5" ViewportUnits="Absolute" Stretch="None">
@@ -398,7 +399,7 @@
       </DockPanel>
 
       <!-- ===================== Pages ===================== -->
-      <TabControl Grid.Row="1" Grid.Column="1" Style="{StaticResource NavTabs}" Margin="0,4,0,0">
+      <TabControl Grid.Row="1" Grid.Column="1" Style="{StaticResource NavTabs}" Margin="0,4,0,0" SelectionChanged="Tabs_SelectionChanged">
 
         <!-- ========== MICROPHONE ========== -->
         <TabItem Header="MICROPHONE">
@@ -798,6 +799,171 @@
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
             </StackPanel>
+          </ScrollViewer>
+        </TabItem>
+
+        <!-- ========== GAMES ========== -->
+        <TabItem Header="GAMES" x:Name="GamesTab">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="28,0,12,0">
+            <Grid Style="{StaticResource Page}">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="360" />
+              </Grid.ColumnDefinitions>
+
+              <StackPanel>
+                <!-- Game mode -->
+                <Border Style="{StaticResource CardBox}">
+                  <StackPanel>
+                    <DockPanel Margin="0,0,0,6">
+                      <ToggleButton DockPanel.Dock="Right" Style="{StaticResource Toggle}" IsChecked="{Binding AutoGameProfiles}" VerticalAlignment="Center">
+                        <TextBlock Text="Auto-switch profile" />
+                      </ToggleButton>
+                      <TextBlock Text="{Binding GameTitle}" FontFamily="{StaticResource Display}" FontSize="20" FontWeight="SemiBold" />
+                    </DockPanel>
+                    <TextBlock Text="{Binding GameStatus}" Style="{StaticResource Label}" TextWrapping="Wrap" Margin="0,0,0,16" />
+                    <TextBlock Text="PROFILE PER GAME" Style="{StaticResource Overline}" />
+                    <ItemsControl ItemsSource="{Binding GameRows}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <DockPanel Margin="0,0,0,8">
+                            <ComboBox DockPanel.Dock="Right" Width="230" DisplayMemberPath="Name"
+                                      ItemsSource="{Binding DataContext.Profiles, RelativeSource={RelativeSource AncestorType=Window}}"
+                                      SelectedItem="{Binding Profile}" />
+                            <TextBlock Text="{Binding Title}" VerticalAlignment="Center" FontWeight="Medium" />
+                          </DockPanel>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Style="{StaticResource Label}" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0"
+                               Text="Detection only looks at process names. It never touches the game, so it is safe with anti-cheat (Riot Vanguard, Easy Anti-Cheat)." />
+                  </StackPanel>
+                </Border>
+
+                <!-- Game audio analysis -->
+                <Border Style="{StaticResource CardBox}">
+                  <StackPanel>
+                    <DockPanel Margin="0,0,0,4">
+                      <ToggleButton DockPanel.Dock="Right" Style="{StaticResource Toggle}" IsChecked="{Binding GameAnalysis}" VerticalAlignment="Center">
+                        <TextBlock Text="Analyze" />
+                      </ToggleButton>
+                      <TextBlock Text="Game audio analysis" Style="{StaticResource CardTitle}" VerticalAlignment="Center" />
+                    </DockPanel>
+                    <TextBlock Style="{StaticResource Label}" TextWrapping="Wrap" Margin="0,0,0,12"
+                               Text="Listens (read-only) to what your PC plays and checks what matters in competitive games: clipping, loudness, and whether bass is drowning out footsteps. Turns on by itself while a game runs." />
+                    <TextBlock Text="{Binding GameDevice}" Style="{StaticResource Label}" FontSize="11" Foreground="{StaticResource Accent}" Margin="0,0,0,8" />
+                    <c:SpectrumView Engine="{Binding GameAudio}" Height="180" />
+                    <UniformGrid Columns="3" Margin="0,14,0,10">
+                      <StackPanel>
+                        <TextBlock Text="LOUDNESS" Style="{StaticResource Overline}" Margin="0,0,0,2" />
+                        <TextBlock FontFamily="{StaticResource Display}" FontSize="22" FontWeight="SemiBold">
+                          <Run Text="{Binding GameLufs, Mode=OneWay}" /><Run Text=" LUFS" FontSize="12" Foreground="{StaticResource Muted}" />
+                        </TextBlock>
+                      </StackPanel>
+                      <StackPanel>
+                        <TextBlock Text="PEAK" Style="{StaticResource Overline}" Margin="0,0,0,2" />
+                        <TextBlock Text="{Binding GamePeak}" FontFamily="{StaticResource Display}" FontSize="22" FontWeight="SemiBold" />
+                      </StackPanel>
+                      <StackPanel>
+                        <TextBlock Text="CLIPPING" Style="{StaticResource Overline}" Margin="0,0,0,2" />
+                        <TextBlock Text="{Binding GameClipping}" FontFamily="{StaticResource Display}" FontSize="22" FontWeight="SemiBold" />
+                      </StackPanel>
+                    </UniformGrid>
+                    <TextBlock Text="BALANCE (VS LOUDEST BAND)" Style="{StaticResource Overline}" />
+                    <ItemsControl ItemsSource="{Binding GameBands}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                              <ColumnDefinition Width="90" />
+                              <ColumnDefinition Width="*" />
+                              <ColumnDefinition Width="60" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="name" Text="{Binding Name}" Style="{StaticResource Label}" VerticalAlignment="Center" />
+                            <Border Grid.Column="1" Height="10" CornerRadius="5" Background="#1E232D">
+                              <Border HorizontalAlignment="Left" CornerRadius="5" Background="{StaticResource AccentGradient}" x:Name="bar"
+                                      Width="{Binding Fill, Converter={StaticResource FractionToWidth}, ConverterParameter=260}" />
+                            </Border>
+                            <TextBlock Grid.Column="2" Text="{Binding Label}" Style="{StaticResource Label}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                          </Grid>
+                          <DataTemplate.Triggers>
+                            <DataTrigger Binding="{Binding Name}" Value="Footsteps">
+                              <Setter TargetName="name" Property="Foreground" Value="{StaticResource Good}" />
+                              <Setter TargetName="name" Property="FontWeight" Value="SemiBold" />
+                            </DataTrigger>
+                          </DataTemplate.Triggers>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+
+              <StackPanel Grid.Column="1">
+                <!-- Insights -->
+                <Border Style="{StaticResource CardBox}">
+                  <StackPanel>
+                    <TextBlock Text="WHAT YETIHUB HEARS" Style="{StaticResource Overline}" />
+                    <ItemsControl ItemsSource="{Binding GameInsights}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <Border x:Name="card" CornerRadius="10" Padding="12,10" Margin="0,0,0,8" Background="#1B2029" BorderThickness="1" BorderBrush="#232833">
+                            <StackPanel>
+                              <TextBlock x:Name="title" Text="{Binding Title}" FontWeight="SemiBold" />
+                              <TextBlock Text="{Binding Detail}" Style="{StaticResource Label}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                            </StackPanel>
+                          </Border>
+                          <DataTemplate.Triggers>
+                            <DataTrigger Binding="{Binding Level}" Value="bad">
+                              <Setter TargetName="card" Property="BorderBrush" Value="#5C1F2C" />
+                              <Setter TargetName="title" Property="Foreground" Value="{StaticResource Bad}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Level}" Value="warn">
+                              <Setter TargetName="card" Property="BorderBrush" Value="#5C511F" />
+                              <Setter TargetName="title" Property="Foreground" Value="#FFC83D" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Level}" Value="good">
+                              <Setter TargetName="card" Property="BorderBrush" Value="#1F5C46" />
+                              <Setter TargetName="title" Property="Foreground" Value="{StaticResource Good}" />
+                            </DataTrigger>
+                          </DataTemplate.Triggers>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </Border>
+
+                <!-- Teammate preview -->
+                <Border Style="{StaticResource CardBox}">
+                  <StackPanel>
+                    <ToggleButton Style="{StaticResource Toggle}" IsChecked="{Binding VoiceChatPreview}">
+                      <TextBlock Text="Hear what teammates hear" FontWeight="SemiBold" />
+                    </ToggleButton>
+                    <TextBlock Style="{StaticResource Label}" TextWrapping="Wrap" Margin="50,6,0,0"
+                               Text="Your 'Hear yourself' output imitates game voice chat (about 100 Hz to 10 kHz, like Opus at gaming bitrates), so you can tune your callouts. What teammates receive is not changed." />
+                  </StackPanel>
+                </Border>
+
+                <!-- Valorant checklist -->
+                <Border Style="{StaticResource CardBox}">
+                  <StackPanel>
+                    <TextBlock Text="VALORANT SETUP" Style="{StaticResource Overline}" />
+                    <TextBlock Style="{StaticResource Label}" TextWrapping="Wrap" LineHeight="20">
+                      <Run Text="Mic" FontWeight="SemiBold" Foreground="{StaticResource Text}" /><LineBreak />
+                      <Run Text="• Settings → Audio → Voice Chat → Input device: CABLE Output (YetiHub's virtual mic)" /><LineBreak />
+                      <Run Text="• Voice activation threshold low (or push-to-talk): YetiHub already removes noise, and a high threshold cuts the start of words" /><LineBreak />
+                      <Run Text="• Profile: Valorant Comms" /><LineBreak />
+                      <LineBreak />
+                      <Run Text="Game sound" FontWeight="SemiBold" Foreground="{StaticResource Text}" /><LineBreak />
+                      <Run Text="• Speaker configuration: Stereo, HRTF on" /><LineBreak />
+                      <Run Text="• Windows spatial sound (Sonic / Atmos) off: it conflicts with HRTF" /><LineBreak />
+                      <Run Text="• Music 0, sound effects high; closed-back stereo headphones" /><LineBreak />
+                      <Run Text="• Footsteps live around 2–4 kHz: keep bass boost off on your headset" />
+                    </TextBlock>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </Grid>
           </ScrollViewer>
         </TabItem>
 

@@ -104,6 +104,8 @@ public sealed class ProfileViewModel(Profile model, Action<ProfileViewModel> ren
 
     private bool _isActive;
     public bool IsActive { get => _isActive; set => Set(ref _isActive, value); }
+
+    public override string ToString() => Name;
 }
 
 /// <param name="Unavailable">"unplugged" / "disabled", or null when the device can be used.</param>

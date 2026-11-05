@@ -2,6 +2,23 @@
 
 All notable changes to YetiHub. The newest release is at the top; the release workflow ships this file as the release notes.
 
+## 0.5.0
+
+- **New GAMES tab** for competitive play.
+  - **Game mode:** detects VALORANT, CS2, Apex, Fortnite, Overwatch 2, Rainbow Six Siege, League and Call of Duty by
+    process name only (never touches the game, safe with anti-cheat), switches to that game's profile, and switches
+    back when you quit. Choose the profile per game.
+  - **Game audio analysis:** listens read-only to what your PC plays and reports loudness, peak, clipping and the
+    balance between bass and the footstep band (2–4.5 kHz), averaged over the last ~15 s of sound, with plain advice
+    (bass masking footsteps, clipping, very loud or quiet mix). Runs only while the tab is open or a game runs.
+  - **Hear what teammates hear:** your monitor output can imitate game voice chat (about 100 Hz–10 kHz, like Opus at
+    gaming bitrates) so you can tune callouts. What teammates receive is unchanged.
+  - **VALORANT setup checklist** (mic input, voice threshold, HRTF, spatial sound).
+- **Valorant Comms** standard profile for tactical shooters: heavy keyboard/mouse click suppression, a fast leveler
+  and firm compressor so whispers and shouted callouts land at the same level, a clarity lift in the 2.5–4 kHz callout
+  band, and extra limiter headroom for the voice codec. Passes the speech-quality tests at normal and soft levels.
+- Fixed: profile pickers showed internal type names instead of profile names.
+
 ## 0.4.1
 
 - **Much lower CPU use.** Meters and graphs now run on one shared 30 fps clock instead of every display refresh

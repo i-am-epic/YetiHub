@@ -11,7 +11,7 @@ namespace YetiHub.App.Controls;
 /// </summary>
 public abstract class LiveGraph : FrameworkElement
 {
-    public static readonly DependencyProperty EngineProperty = DependencyProperty.Register(nameof(Engine), typeof(AudioEngine), typeof(LiveGraph));
+    public static readonly DependencyProperty EngineProperty = DependencyProperty.Register(nameof(Engine), typeof(IAnalyzerSource), typeof(LiveGraph));
 
     private bool _hooked;
 
@@ -22,7 +22,7 @@ public abstract class LiveGraph : FrameworkElement
         Loaded += (_, _) => Hook(IsVisible);
     }
 
-    public AudioEngine? Engine { get => (AudioEngine?)GetValue(EngineProperty); set => SetValue(EngineProperty, value); }
+    public IAnalyzerSource? Engine { get => (IAnalyzerSource?)GetValue(EngineProperty); set => SetValue(EngineProperty, value); }
 
     /// <summary>Set YETIHUB_NO_GRAPHS=1 to disable live graphs (troubleshooting slow GPUs / remote desktop).</summary>
     private static readonly bool Disabled = Environment.GetEnvironmentVariable("YETIHUB_NO_GRAPHS") == "1";

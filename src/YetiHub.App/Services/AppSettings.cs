@@ -22,6 +22,15 @@ public sealed class AppSettings
     /// <summary>Draw the UI with the CPU (fixes blank/white windows on broken GPU drivers or remote desktop).</summary>
     public bool SoftwareRendering { get; set; }
 
+    /// <summary>Switch to a game's profile while it runs, then back.</summary>
+    public bool AutoGameProfiles { get; set; } = true;
+
+    /// <summary>Profile id per game id; games not listed use their recommended standard profile.</summary>
+    public Dictionary<string, string> GameProfiles { get; set; } = [];
+
+    /// <summary>Monitor output imitates game voice chat.</summary>
+    public bool VoiceChatPreview { get; set; }
+
     /// <summary>Mod processor on/off by name; mods not listed keep their own default.</summary>
     public Dictionary<string, bool> ProcessorStates { get; set; } = [];
 

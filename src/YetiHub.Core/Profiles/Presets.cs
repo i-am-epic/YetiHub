@@ -69,6 +69,17 @@ public static class Presets
             Fx("deesser", ("threshold", -26), ("frequency", 7000), ("amount", 6)),
             Out(2.5f)),
 
+        // Tactical shooters (VALORANT, CS2, R6): voice chat is Opus-class (~40 kbit/s), so the levers are clarity in the
+        // 2.5–4 kHz callout band, the same level for whispered rotates and shouted callouts, and no keyboard/mouse clicks.
+        Make("std-valorant", "Valorant Comms", "Tactical-shooter comms: punchy callouts, no clicks, whispers and shouts at one level.",
+            Cleanup(lowCut: 110, denoise: 24, strength: 70, sensitivity: 7, gateRange: -40, keys: 100),
+            Fx("eq", ("bass", -1), ("body", -3.5f), ("presence", 4.5f), ("air", 1.5f)),
+            Fx("leveler", ("target", -16), ("maxgain", 20), ("speed", 500)),
+            Fx("compressor", ("threshold", -24), ("ratio", 4), ("attack", 4), ("release", 120), ("makeup", 4)),
+            Fx("deesser", ("threshold", -26), ("frequency", 6500), ("amount", 7)),
+            Fx("output", ("gain", 3.5f)),
+            Fx("limiter", ("ceiling", -2))),
+
         Make("std-meeting", "Bright & Clear", "Crisp and intelligible for calls, Zoom and Teams.",
             Cleanup(lowCut: 110, denoise: 20, strength: 60, sensitivity: 8, gateRange: -30, keys: 80),
             Fx("eq", ("bass", -1), ("body", -3), ("presence", 3.5f), ("air", 2)),

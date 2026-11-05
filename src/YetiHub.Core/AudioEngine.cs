@@ -18,7 +18,7 @@ public enum OutputRole
 /// all on one Pro Audio thread. See <see cref="LowLatencyRender"/> for how the output delay is kept minimal.
 /// The Yeti's own headphone jack always carries the raw signal with zero latency; that is hardware.
 /// </summary>
-public sealed class AudioEngine : IDisposable
+public sealed class AudioEngine : IAnalyzerSource, IDisposable
 {
     private readonly YetiDevice _device;
     private readonly List<IAudioProcessor> _processors = [];
@@ -26,6 +26,15 @@ public sealed class AudioEngine : IDisposable
     private IAudioProcessor[] _processorSnapshot = [];
     private readonly Dictionary<OutputRole, LowLatencyRender> _outputs = [];
     private LowLatencyRender[] _outputSnapshot = [];
+    private LowLatencyRender? _monitorSink;
+
+    // "Hear what teammates hear": voice-chat style band limit applied to the monitor output only.
+    private readonly Biquad _previewHp = new(), _previewLp1 = new(), _previewLp2 = new();
+    private float[] _preview = [];
+    private int _previewRate;
+
+    /// <summary>Monitor output sounds like a game voice-chat codec (100 Hz–10 kHz). What others receive is unchanged.</summary>
+    public bool VoiceChatPreview { get; set; }
 
     private LowLatencyCapture? _capture;
     private float[] _work = [];
@@ -116,6 +125,7 @@ public sealed class AudioEngine : IDisposable
             if (deviceId != null)
                 _outputs[role] = new LowLatencyRender(deviceId, _capture.Format);
             _outputSnapshot = _outputs.Values.ToArray();
+            _monitorSink = _outputs.GetValueOrDefault(OutputRole.Monitor);
         }
         // The audio thread may still be inside Write on the old output for one packet.
         if (old != null)
@@ -168,9 +178,14 @@ public sealed class AudioEngine : IDisposable
         Volatile.Write(ref _outputPeak, Dsp.Peak(work));
         Effects.Measure(work, format.SampleRate, format.Channels);
         OutputTap.Write(work, format.Channels);
+        var monitor = _monitorSink;
         foreach (var output in _outputSnapshot)
         {
-            try { output.Write(work); }
+            try
+            {
+                if (VoiceChatPreview && ReferenceEquals(output, monitor)) output.Write(Preview(work, format.SampleRate, format.Channels));
+                else output.Write(work);
+            }
             catch (Exception ex) { Error?.Invoke(this, "Output error: " + ex.Message); }
         }
 
@@ -191,6 +206,27 @@ public sealed class AudioEngine : IDisposable
             processor.Enabled = false;
             Error?.Invoke(this, $"'{processor.Name}' crashed and was disabled: {ex.Message}");
         }
+    }
+
+    /// <summary>Approximates a game voice-chat codec at gaming bitrates (Opus ~32–40 kbit/s): 100 Hz–10 kHz.</summary>
+    private Span<float> Preview(Span<float> work, int rate, int channels)
+    {
+        if (rate != _previewRate)
+        {
+            _previewRate = rate;
+            foreach (var b in new[] { _previewHp, _previewLp1, _previewLp2 }) { b.EnsureChannels(channels); b.Reset(); }
+            _previewHp.SetHighPass(rate, 100);
+            _previewLp1.SetLowPass(rate, 10000);
+            _previewLp2.SetLowPass(rate, 10000);
+        }
+        if (_preview.Length < work.Length) _preview = new float[work.Length * 2];
+        var p = _preview.AsSpan(0, work.Length);
+        for (var i = 0; i < work.Length; i++)
+        {
+            var c = i % channels;
+            p[i] = _previewLp2.Process(_previewLp1.Process(_previewHp.Process(work[i], c), c), c);
+        }
+        return p;
     }
 
     public void Dispose()

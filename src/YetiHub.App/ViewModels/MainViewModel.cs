@@ -11,6 +11,7 @@ using Velopack;
 using YetiHub.App.Services;
 using YetiHub.Core;
 using YetiHub.Core.Effects;
+using YetiHub.Core.Games;
 using YetiHub.Core.Profiles;
 using YetiHub.Mods;
 
@@ -19,6 +20,9 @@ namespace YetiHub.App.ViewModels;
 public sealed class MainViewModel : Observable, IDisposable
 {
     private readonly DeviceScanner _scanner = new();
+    private readonly GameDetector _games = new();
+    private GameAudioMonitor? _gameAudio;
+    private ProfileViewModel? _profileBeforeGame;
     private readonly ModHost _mods = new(Path.Combine(AppSettings.DataRoot, "mod-data"));
     private readonly UpdateService _updates = new();
     private readonly AppSettings _settings = AppSettings.Load();
@@ -183,6 +187,76 @@ public sealed class MainViewModel : Observable, IDisposable
     private string _pitchText = "";
     public string PitchText { get => _pitchText; private set => Set(ref _pitchText, value); }
 
+    // ---------------- games ----------------
+    public KnownGame? CurrentGame => _games.Current;
+    public bool GameRunning => _games.Current != null;
+    public string GameTitle => _games.Current is { } g ? $"{g.Emoji}  {g.Name} is running" : "No game running";
+    public string GameStatus => _games.Current is null
+        ? "Start a supported game and YetiHub switches to its profile automatically."
+        : AutoGameProfiles ? $"Using \"{ActiveProfile?.Name}\" while you play." : "Auto-switch is off.";
+    public ObservableCollection<GameRow> GameRows { get; } = [];
+
+    public bool AutoGameProfiles
+    {
+        get => _settings.AutoGameProfiles;
+        set
+        {
+            if (_settings.AutoGameProfiles == value) return;
+            _settings.AutoGameProfiles = value;
+            _settings.Save();
+            Raise();
+            Raise(nameof(GameStatus));
+        }
+    }
+
+    public bool VoiceChatPreview
+    {
+        get => _settings.VoiceChatPreview;
+        set
+        {
+            if (_settings.VoiceChatPreview == value) return;
+            _settings.VoiceChatPreview = value;
+            _settings.Save();
+            if (_engine != null) _engine.VoiceChatPreview = value;
+            Raise();
+        }
+    }
+
+    private bool _gameAnalysis;
+    /// <summary>Listen to the PC's output and analyse the game mix. On automatically while a game runs.</summary>
+    public bool GameAnalysis
+    {
+        get => _gameAnalysis;
+        set
+        {
+            if (!Set(ref _gameAnalysis, value)) return;
+            if (value) StartGameAudio(); else StopGameAudio();
+        }
+    }
+
+    public IAnalyzerSource? GameAudio => _gameAudio;
+
+    private bool _gamesTabVisible;
+    /// <summary>Set by the window: analysis runs while the Games tab is open or a game is running, never otherwise.</summary>
+    public bool GamesTabVisible
+    {
+        get => _gamesTabVisible;
+        set
+        {
+            if (_gamesTabVisible == value) return;
+            _gamesTabVisible = value;
+            GameAnalysis = value || GameRunning;
+        }
+    }
+
+    private string _gameLufs = "—", _gamePeak = "—", _gameClipping = "—", _gameDevice = "";
+    public string GameLufs { get => _gameLufs; private set => Set(ref _gameLufs, value); }
+    public string GamePeak { get => _gamePeak; private set => Set(ref _gamePeak, value); }
+    public string GameClipping { get => _gameClipping; private set => Set(ref _gameClipping, value); }
+    public string GameDevice { get => _gameDevice; private set => Set(ref _gameDevice, value); }
+    public ObservableCollection<BandRow> GameBands { get; } = [];
+    public ObservableCollection<GameAudioInsight> GameInsights { get; } = [];
+
     // ---------------- latency ----------------
     private string _latencyText = "—";
     /// <summary>Measured mic-to-ear delay of the monitor (or virtual mic) route.</summary>
@@ -294,6 +368,7 @@ public sealed class MainViewModel : Observable, IDisposable
             Raise();
             Raise(nameof(IsLocked));
             Raise(nameof(CanEditFx));
+            Raise(nameof(GameStatus));
             ApplyProfile(value);
             _settings.ActiveProfileId = value.Model.Id;
             _settings.Save();
@@ -345,6 +420,9 @@ public sealed class MainViewModel : Observable, IDisposable
     public async Task InitializeAsync()
     {
         LoadProfiles();
+        // Subscribe only now: game rows and profiles must exist before a game can switch profile.
+        _games.Changed += (_, game) => _ui.InvokeAsync(() => OnGameChanged(game));
+        if (_games.Current is { } running) OnGameChanged(running);
         LoadMods();
         Controls.UiClock.Tick += OnFrame;
 
@@ -363,6 +441,100 @@ public sealed class MainViewModel : Observable, IDisposable
         foreach (var p in _profileStore.LoadUserProfiles().OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase))
             Profiles.Add(new ProfileViewModel(p, Renamed));
         ActiveProfile = Profiles.FirstOrDefault(p => p.Model.Id == _settings.ActiveProfileId) ?? Profiles[0];
+
+        foreach (var game in GameDetector.Games)
+        {
+            var id = _settings.GameProfiles.GetValueOrDefault(game.Id) ?? game.RecommendedProfileId;
+            var profile = Profiles.FirstOrDefault(p => p.Model.Id == id) ?? Profiles[0];
+            GameRows.Add(new GameRow(game, profile, OnGameProfileChosen));
+        }
+        foreach (var (name, _, _) in GameAudioMonitor.Bands)
+            GameBands.Add(new BandRow(name));
+    }
+
+    private void OnGameProfileChosen(GameRow row)
+    {
+        _settings.GameProfiles[row.Game.Id] = row.Profile.Model.Id;
+        _settings.Save();
+        if (_games.Current?.Id == row.Game.Id && AutoGameProfiles) ActiveProfile = row.Profile;
+    }
+
+    private void OnGameChanged(KnownGame? game)
+    {
+        Raise(nameof(CurrentGame));
+        Raise(nameof(GameRunning));
+        Raise(nameof(GameTitle));
+        if (game != null)
+        {
+            Log($"{game.Name} started");
+            GameAnalysis = true;
+            if (AutoGameProfiles)
+            {
+                var row = GameRows.First(r => r.Game.Id == game.Id);
+                if (ActiveProfile != row.Profile)
+                {
+                    _profileBeforeGame = ActiveProfile;
+                    ActiveProfile = row.Profile;
+                    Log($"Game mode: switched to \"{row.Profile.Name}\" for {game.Name}");
+                }
+            }
+        }
+        else
+        {
+            Log("Game closed");
+            GameAnalysis = _gamesTabVisible;
+            if (_profileBeforeGame != null && Profiles.Contains(_profileBeforeGame))
+            {
+                ActiveProfile = _profileBeforeGame;
+                Log($"Game mode: back to \"{_profileBeforeGame.Name}\"");
+            }
+            _profileBeforeGame = null;
+        }
+        Raise(nameof(GameStatus));
+    }
+
+    private void StartGameAudio()
+    {
+        if (_gameAudio != null) return;
+        try
+        {
+            _gameAudio = new GameAudioMonitor();
+            GameDevice = "Listening to: " + _gameAudio.DeviceName;
+        }
+        catch (Exception ex)
+        {
+            Log($"Could not listen to game audio: {ex.Message}");
+            _gameAnalysis = false;
+            Raise(nameof(GameAnalysis));
+        }
+        Raise(nameof(GameAudio));
+    }
+
+    private void StopGameAudio()
+    {
+        var old = _gameAudio;
+        _gameAudio = null;
+        Raise(nameof(GameAudio));
+        GameDevice = "";
+        if (old != null) Task.Run(old.Dispose);
+    }
+
+    private void UpdateGameAnalysis()
+    {
+        if (_gameAudio is null) return;
+        var st = _gameAudio.Stats;
+        GameLufs = st.IsPlaying ? $"{st.Lufs:0.0}" : "—";
+        GamePeak = st.IsPlaying ? $"{st.PeakDb:0.0} dBFS" : "—";
+        GameClipping = st.IsPlaying ? $"{st.ClippingPercent:0.00} %" : "—";
+        var loudest = st.BandDb.Max();
+        for (var i = 0; i < GameBands.Count && i < st.BandDb.Length; i++)
+            GameBands[i].Update(st.BandDb[i], loudest);
+        var insights = st.Insights();
+        if (!insights.Select(x => x.Title).SequenceEqual(GameInsights.Select(x => x.Title)))
+        {
+            GameInsights.Clear();
+            foreach (var i in insights) GameInsights.Add(i);
+        }
     }
 
     private void Renamed(ProfileViewModel p)
@@ -580,6 +752,7 @@ public sealed class MainViewModel : Observable, IDisposable
         }
 
         DeviceProblem = null;
+        engine.VoiceChatPreview = _settings.VoiceChatPreview;
         _engine = engine;
         _mods.Attach(_device, engine);
         if (exclusive && !engine.IsExclusive)
@@ -728,6 +901,7 @@ public sealed class MainViewModel : Observable, IDisposable
         Compression = comp.Enabled && _effects.Enabled && comp.GainReductionDb < -0.5 ? $"-{-comp.GainReductionDb:0.0} dB" : "";
 
         UpdateAnalysis();
+        UpdateGameAnalysis();
 
         var latency = _engine?.LatencyMs(OutputRole.Monitor) ?? _engine?.LatencyMs(OutputRole.VirtualMic);
         LatencyText = latency is { } ms ? $"{ms:0} ms" : "off";
@@ -861,6 +1035,43 @@ public sealed class MainViewModel : Observable, IDisposable
         DetachDevice();
         _mods.Dispose();
         _scanner.Dispose();
+        _games.Dispose();
+        _gameAudio?.Dispose();
+    }
+}
+
+public sealed class GameRow(KnownGame game, ProfileViewModel profile, Action<GameRow> chosen) : Observable
+{
+    public KnownGame Game { get; } = game;
+    public string Title => $"{Game.Emoji}  {Game.Name}";
+
+    private ProfileViewModel _profile = profile;
+    public ProfileViewModel Profile
+    {
+        get => _profile;
+        set
+        {
+            if (value is null || !Set(ref _profile, value)) return;
+            chosen(this);
+        }
+    }
+}
+
+public sealed class BandRow(string name) : Observable
+{
+    public string Name { get; } = name;
+
+    private double _fill;
+    /// <summary>0..1 bar length relative to the loudest band (40 dB range).</summary>
+    public double Fill { get => _fill; private set => Set(ref _fill, value); }
+
+    private string _label = "—";
+    public string Label { get => _label; private set => Set(ref _label, value); }
+
+    public void Update(double db, double loudest)
+    {
+        Fill = Math.Clamp(1 + (db - loudest) / 40, 0.02, 1);
+        Label = db <= -99 ? "—" : $"{db - loudest:0} dB";
     }
 }
 

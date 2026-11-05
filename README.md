@@ -48,12 +48,17 @@ Prefer no installer? Grab `YetiHub-win-Portable.zip` from the [latest release](h
 | 📊 **Live analyzers** | Spectrum (raw vs processed), scrolling voiceprint spectrogram, live waveform, LUFS loudness meter |
 | ⚡ **Ultra-low latency** | Custom WASAPI engine (IAudioClient3, MMCSS Pro Audio thread, adaptive drift resampling); ~20 ms mic-to-ear, with live measured latency and a glitch monitor |
 | 🗂️ **Profiles** | 13 studio-tuned standard profiles (read-only) plus unlimited editable copies, saved as JSON |
+| 🎮 **Game mode** | Detects VALORANT, CS2, Apex and more (process names only, anti-cheat safe), switches to a tuned profile like **Valorant Comms**, analyses the game's own audio (clipping, loudness, bass vs footsteps), and lets you *hear what teammates hear* |
 | 🔌 **Virtual mic** | Send the processed voice to VB-CABLE/Voicemeeter for Discord, OBS, Zoom, Teams and games |
 | 🧩 **Mods** | Drop-in DLL plugins with real-time audio processors ([write one](docs/MODS.md)) |
 | 🔄 **Auto-update** | Delta updates from GitHub Releases |
 
 <p align="center">
   <img src="docs/assets/screenshots/characters.png" width="860" alt="Character voice gallery with 28 voices" />
+</p>
+
+<p align="center">
+  <img src="docs/assets/screenshots/games.png" width="860" alt="Games tab: VALORANT detected, auto profile switching and game audio analysis" />
 </p>
 
 <p align="center">
@@ -74,6 +79,7 @@ They're read-only; press **Customize a copy** to tweak your own.
 | **Podcast Clean** | Smooth and consistent for long listening |
 | **Streamer Punch** | Loud and crisp, cuts through game audio |
 | **Gaming Comms** | Maximum clarity, keyboard and fan removed |
+| **Valorant Comms** | Tactical-shooter callouts: no clicks, whispers and shouts at one level |
 | **Bright & Clear** | Intelligible calls for Zoom and Teams |
 | **Warm & Intimate** | Soft and velvety for late-night talk and ASMR |
 | **Singer** | Gentle pitch correction with a vocal plate |
@@ -150,4 +156,4 @@ Releasing: push a `vX.Y.Z` tag and GitHub Actions builds, tests, packages and pu
 
 ## 📄 License
 
-MIT. Not affiliated with Logitech or Blue Microphones. "Blue Yeti" and "G HUB" are trademarks of Logitech.
+MIT. Not affiliated with Logitech, Blue Microphones or any game publisher. "Blue Yeti" and "G HUB" are trademarks of Logitech; VALORANT is a trademark of Riot Games. Game names are used only to describe compatibility.

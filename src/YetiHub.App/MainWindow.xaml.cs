@@ -25,6 +25,13 @@ public partial class MainWindow : Window
         };
     }
 
+    private void Tabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        // Only react to the tab control itself, not to combo boxes inside the pages (the event bubbles).
+        if (!ReferenceEquals(e.OriginalSource, sender)) return;
+        _vm.GamesTabVisible = GamesTab.IsSelected;
+    }
+
     private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
 
     private void Maximize_Click(object sender, RoutedEventArgs e) =>
